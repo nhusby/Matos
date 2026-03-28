@@ -1,6 +1,5 @@
-
 import OpenAI from 'openai';
-import { EmitterPromise } from "./EmitterPromise";
+import { EmitterPromise } from './EmitterPromise.js';
 
 export interface Tool {
   name: string;
@@ -39,8 +38,6 @@ export interface Message {
 interface Api extends OpenAI {
   _models: string[];
 }
-
-
 
 export abstract class Agent {
   protected apis!: Api[];
@@ -94,7 +91,10 @@ export abstract class Agent {
     return this.sendMessages(this.messages, response);
   }
 
-  public sendMessages(messages: Message[], response: Message): EmitterPromise<Message> {
+  public sendMessages(
+    messages: Message[],
+    response: Message,
+  ): EmitterPromise<Message> {
     const emitter = new EmitterPromise<Message>();
     const part: AgentPart = {
       role: 'assistant',
@@ -105,12 +105,27 @@ export abstract class Agent {
 
     (async () => {
       const abortController = new AbortController();
-      const stream = await this.api.chat.completions.create({
-        stream: true,
+      const params = {
+        stream: true as const,
         signal: abortController.signal,
         model: this.model,
         messages: toOpenAiMessages(messages),
-      } as OpenAI.ChatCompletionCreateParamsStreaming);
+        ...(this.tools.length
+          ? {
+              tools: this.tools.map((tool) => ({
+                type: 'function' as const,
+                function: {
+                  name: tool.name,
+                  description: tool.description,
+                  parameters: tool.params,
+                },
+              })),
+            }
+          : {}),
+      };
+      const stream = await this.api.chat.completions.create(
+        params as OpenAI.ChatCompletionCreateParamsStreaming,
+      );
       for await (const chunk of stream) {
         try {
           for (const choice of chunk.choices) {
@@ -137,10 +152,12 @@ export abstract class Agent {
 
                 if (toolCall.function?.name) {
                   part.toolCalls![toolCall.index]!.name =
-                    (part.toolCalls![toolCall.index]!.name || '') + toolCall.function.name;
+                    (part.toolCalls![toolCall.index]!.name || '') +
+                    toolCall.function.name;
                 }
                 if (toolCall.function?.arguments) {
-                  part.toolCalls![toolCall.index]!._argStr += toolCall.function.arguments;
+                  part.toolCalls![toolCall.index]!._argStr +=
+                    toolCall.function.arguments;
                 }
               }
             }
@@ -164,7 +181,9 @@ export abstract class Agent {
                       result: undefined,
                       argStr: undefined,
                     });
-                    const tool = this.tools.find((tool) => tool.name === toolCall.name);
+                    const tool = this.tools.find(
+                      (tool) => tool.name === toolCall.name,
+                    );
                     if (!tool) {
                       throw new Error(`tool ${toolCall.name} not found`);
                     }
@@ -175,8 +194,8 @@ export abstract class Agent {
                   }
                   await emitter.emitAsync('toolCallResult', toolCallResult);
                 }
-                await this.sendMessages(this.messages, response).onAny((event, data) =>
-                  emitter.emitAsync(event, data),
+                await this.sendMessages(this.messages, response).onAny(
+                  (event, data) => emitter.emitAsync(event, data),
                 );
               } else {
                 await emitter.emitAsync('finished', response);
@@ -212,7 +231,13 @@ function toOpenAiMessages(messages: Message[]) {
     .flatMap((msg) => (msg.parts ?? [msg]) as any)
     .map((part: AgentPart | ToolPart | Message) => {
       const obj: any = {};
-      for (const key of ['role', 'name', 'content', 'toolCalls', 'toolCallId']) {
+      for (const key of [
+        'role',
+        'name',
+        'content',
+        'toolCalls',
+        'toolCallId',
+      ]) {
         if (key in part) {
           // @ts-ignore
           obj[snake_case(key)] = part[key];
