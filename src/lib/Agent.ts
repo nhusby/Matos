@@ -1,3 +1,4 @@
+import EventEmitter2 from 'eventemitter2';
 import OpenAI from 'openai';
 import { EmitterPromise } from './EmitterPromise.js';
 
@@ -39,11 +40,11 @@ interface Api extends OpenAI {
   _models: string[];
 }
 
-export abstract class Agent {
+export class Agent extends EventEmitter2 {
   protected apis!: Api[];
+  private apiIndex = 0;
   public get api(): Api {
-    // TODO: add external state to cycle
-    return this.apis[0];
+    return this.apis[this.apiIndex];
   }
 
   protected models!: string[];
@@ -59,10 +60,19 @@ export abstract class Agent {
   messages: Message[] = [];
 
   tools: Tool[] = [];
+  systemPrompt?: string;
 
-  constructor(params: { api: Api | Api[]; model: string | string[] }) {
+  constructor(params: {
+    api: Api | Api[];
+    model: string | string[];
+    tools?: Tool[];
+    systemPrompt?: string;
+  }) {
+    super();
     this.apis = Array.isArray(params.api) ? params.api : [params.api];
     this.models = Array.isArray(params.model) ? params.model : [params.model];
+    this.tools = params.tools ?? [];
+    this.systemPrompt = params.systemPrompt;
   }
 
   async init() {
@@ -88,7 +98,11 @@ export abstract class Agent {
     };
     this.messages.push(response);
 
-    return this.sendMessages(this.messages, response);
+    return this.sendMessages([{
+      role: 'system',
+      content: this.systemPrompt ?? "",
+      created: new Date(),
+    },...this.messages], response);
   }
 
   public sendMessages(
@@ -104,6 +118,7 @@ export abstract class Agent {
     response.parts!.push(part);
 
     (async () => {
+      await this.emitAsync('send', messages);
       const abortController = new AbortController();
       const params = {
         stream: true as const,
@@ -126,6 +141,7 @@ export abstract class Agent {
       const stream = await this.api.chat.completions.create(
         params as OpenAI.ChatCompletionCreateParamsStreaming,
       );
+      this.apiIndex = (this.apiIndex + 1) % this.apis.length;
       for await (const chunk of stream) {
         try {
           for (const choice of chunk.choices) {
@@ -199,6 +215,7 @@ export abstract class Agent {
                 );
               } else {
                 await emitter.emitAsync('finished', response);
+                await this.emitAsync('complete', response);
               }
               break;
             }

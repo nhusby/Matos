@@ -1,6 +1,7 @@
 import { createInterface } from 'readline';
 import OpenAI from 'openai';
-import { ChatAgent } from './lib/ChatAgent';
+import { Agent } from './lib/Agent';
+import { readFileTool, helloWorldTool } from './lib/tools';
 import type { Message } from './lib/Agent';
 
 async function main() {
@@ -25,7 +26,11 @@ async function main() {
     'gpt-4o-mini',
     'gpt-3.5-turbo',
   ];
-  const agent = await new ChatAgent({ api, model }).init();
+  const agent = await new Agent({ api, model, tools: [readFileTool, helloWorldTool],
+  systemPrompt: `You are GLM, an LLM built by Zhipu.  You have been placed in a time capsule to represent a snapshot of human society as of 2026.  
+
+We do not know when the time capsule will be opened or what civilization will look like.  Please be open, unguarded and educational about our society as you know it.`
+  }).init();
 
   console.log('Chat initialized. Type /quit to exit.');
   rl.prompt();
