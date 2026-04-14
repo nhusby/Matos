@@ -13,7 +13,9 @@ function resolveExtendsChain(
 ): Map<string, string> {
   const extendsMap = new Map<string, string>();
   const visited = new Set<string>();
-  const queue: { path: string; depth: number }[] = [{ path: filePath, depth: 0 }];
+  const queue: { path: string; depth: number }[] = [
+    { path: filePath, depth: 0 },
+  ];
 
   while (queue.length > 0) {
     const { path, depth } = queue.shift()!;
@@ -33,7 +35,10 @@ function resolveExtendsChain(
         if (clause.types.length === 0) continue;
 
         const extExpr = clause.types[0].expression;
-        const defs = service.getDefinitionAtPosition(resolved, extExpr.getStart());
+        const defs = service.getDefinitionAtPosition(
+          resolved,
+          extExpr.getStart(),
+        );
         if (!defs?.length) continue;
 
         const defFile = defs[0].fileName;
@@ -72,12 +77,15 @@ function formatClassSignature(
 
   let header = '';
   if (decl.modifiers) {
-    header += decl.modifiers.map(m => m.getText(sourceFile)).join(' ') + ' ';
+    header += decl.modifiers.map((m) => m.getText(sourceFile)).join(' ') + ' ';
   }
   header += 'class ';
   if (decl.name) header += decl.name.getText(sourceFile);
   if (decl.typeParameters) {
-    header += '<' + decl.typeParameters.map(tp => tp.getText(sourceFile)).join(', ') + '>';
+    header +=
+      '<' +
+      decl.typeParameters.map((tp) => tp.getText(sourceFile)).join(', ') +
+      '>';
   }
   if (decl.heritageClauses) {
     for (const hc of decl.heritageClauses) {
@@ -92,7 +100,7 @@ function formatClassSignature(
       if (sig) {
         const sigStr = typeChecker.signatureToString(sig);
         const modifiers = member.modifiers
-          ? member.modifiers.map(m => m.getText(sourceFile)).join(' ') + ' '
+          ? member.modifiers.map((m) => m.getText(sourceFile)).join(' ') + ' '
           : '';
         const name = member.name?.getText(sourceFile) ?? '';
         parts.push(`  ${modifiers}${name}${sigStr};`);
@@ -101,7 +109,7 @@ function formatClassSignature(
       const type = typeChecker.getTypeAtLocation(member);
       const typeStr = typeChecker.typeToString(type);
       const modifiers = member.modifiers
-        ? member.modifiers.map(m => m.getText(sourceFile)).join(' ') + ' '
+        ? member.modifiers.map((m) => m.getText(sourceFile)).join(' ') + ' '
         : '';
       const name = member.name?.getText(sourceFile) ?? '';
       const optional = member.questionToken ? '?' : '';
@@ -145,7 +153,7 @@ function formatSignature(
     if (sig) {
       const sigStr = typeChecker.signatureToString(sig);
       const modifiers = decl.modifiers
-        ? decl.modifiers.map(m => m.getText(sourceFile)).join(' ') + ' '
+        ? decl.modifiers.map((m) => m.getText(sourceFile)).join(' ') + ' '
         : '';
       parts.push(`${modifiers}${sigStr}`);
     }
@@ -185,7 +193,11 @@ function collectImportSymbols(
       }
     } else if (ts.isNamespaceImport(clause.namedBindings)) {
       const sym = typeChecker.getSymbolAtLocation(clause.namedBindings.name);
-      if (sym) symbols.push({ symbol: sym, name: clause.namedBindings.name.getText() });
+      if (sym)
+        symbols.push({
+          symbol: sym,
+          name: clause.namedBindings.name.getText(),
+        });
     }
   }
 
@@ -212,13 +224,18 @@ function extractImportSignatures(
 
       const moduleSpecifier = node.moduleSpecifier;
       if (!ts.isStringLiteral(moduleSpecifier)) return;
-      if (!moduleSpecifier.text.startsWith('.') && !moduleSpecifier.text.startsWith('/')) return;
+      if (
+        !moduleSpecifier.text.startsWith('.') &&
+        !moduleSpecifier.text.startsWith('/')
+      )
+        return;
 
       const importSymbols = collectImportSymbols(node, typeChecker);
       for (const { symbol } of importSymbols) {
-        const resolved = (symbol.flags & ts.SymbolFlags.Alias)
-          ? typeChecker.getAliasedSymbol(symbol)
-          : symbol;
+        const resolved =
+          symbol.flags & ts.SymbolFlags.Alias
+            ? typeChecker.getAliasedSymbol(symbol)
+            : symbol;
         const decls = resolved.getDeclarations();
         if (!decls?.length) continue;
 
@@ -289,7 +306,8 @@ export const readFileWithContextTool: Tool = {
       },
       maxExtendsDepth: {
         type: 'number',
-        description: 'Maximum depth for resolving extended classes. Default: 3.',
+        description:
+          'Maximum depth for resolving extended classes. Default: 3.',
       },
     },
     required: ['path'],
@@ -308,13 +326,25 @@ export const readFileWithContextTool: Tool = {
     }
 
     const { service, program, typeChecker } = createLanguageService();
-    const extendsMap = resolveExtendsChain(filePath, service, program, maxDepth);
+    const extendsMap = resolveExtendsChain(
+      filePath,
+      service,
+      program,
+      maxDepth,
+    );
 
     const allFiles = [...getExtendsOrder(extendsMap, filePath), filePath];
-    const fullContentFiles = new Set(allFiles.map(f => resolve(f)));
+    const fullContentFiles = new Set(allFiles.map((f) => resolve(f)));
 
     const printer = ts.createPrinter({ removeComments: false });
-    const signatures = extractImportSignatures(allFiles, fullContentFiles, service, program, typeChecker, printer);
+    const signatures = extractImportSignatures(
+      allFiles,
+      fullContentFiles,
+      service,
+      program,
+      typeChecker,
+      printer,
+    );
 
     return formatOutput(signatures, extendsMap, filePath);
   },

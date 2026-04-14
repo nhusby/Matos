@@ -10,8 +10,14 @@ export const editFileTool: Tool = {
     type: 'object',
     properties: {
       path: { type: 'string', description: 'Absolute or relative file path.' },
-      old_string: { type: 'string', description: 'Exact text to find in the file.' },
-      new_string: { type: 'string', description: 'Text to replace old_string with.' },
+      old_string: {
+        type: 'string',
+        description: 'Exact text to find in the file.',
+      },
+      new_string: {
+        type: 'string',
+        description: 'Text to replace old_string with.',
+      },
     },
     required: ['path', 'old_string', 'new_string'],
   },
@@ -21,7 +27,8 @@ export const editFileTool: Tool = {
 
     const count = content.split(old_string).length - 1;
     if (count === 0) return `Error: old_string not found in ${path}`;
-    if (count > 1) return `Error: old_string is not unique in ${path} (found ${count} matches)`;
+    if (count > 1)
+      return `Error: old_string is not unique in ${path} (found ${count} matches)`;
 
     await writeFile(resolved, content.replace(old_string, new_string), 'utf-8');
     return `Successfully edited ${path}`;

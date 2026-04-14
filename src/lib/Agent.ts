@@ -98,11 +98,17 @@ export class Agent extends EventEmitter2 {
     };
     this.messages.push(response);
 
-    return this.sendMessages([{
-      role: 'system',
-      content: this.systemPrompt ?? "",
-      created: new Date(),
-    },...this.messages], response);
+    return this.sendMessages(
+      [
+        {
+          role: 'system',
+          content: this.systemPrompt ?? '',
+          created: new Date(),
+        },
+        ...this.messages,
+      ],
+      response,
+    );
   }
 
   public sendMessages(

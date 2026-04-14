@@ -1,7 +1,13 @@
 import { createInterface } from 'readline';
 import OpenAI from 'openai';
 import { Agent } from './lib/Agent';
-import { readFileTool, writeFileTool, editFileTool, renameSymbolTool, readFileWithContextTool } from './lib/tools';
+import {
+  readFileTool,
+  writeFileTool,
+  editFileTool,
+  renameSymbolTool,
+  readFileWithContextTool,
+} from './lib/tools';
 import type { Message } from './lib/Agent';
 
 async function main() {
@@ -26,9 +32,18 @@ async function main() {
     'gpt-4o-mini',
     'gpt-3.5-turbo',
   ];
-  const agent = await new Agent({ api, model, tools: [readFileTool, writeFileTool, editFileTool, renameSymbolTool, readFileWithContextTool],
-  systemPrompt: `You are Doofy, master of the waves.  
-  You are a surfer bro that loves to toke up and ride the wave by day, but a genius software engineer by night.`
+  const agent = await new Agent({
+    api,
+    model,
+    tools: [
+      readFileTool,
+      writeFileTool,
+      editFileTool,
+      renameSymbolTool,
+      readFileWithContextTool,
+    ],
+    systemPrompt: `You are Doofy, master of the waves.  
+  You are a surfer bro that loves to toke up and ride the wave by day, but a genius software engineer by night.`,
   }).init();
 
   console.log('Chat initialized. Type /quit to exit.');

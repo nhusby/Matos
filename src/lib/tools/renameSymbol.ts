@@ -45,7 +45,13 @@ export const renameSymbolTool: Tool = {
     if (!renameInfo.canRename)
       return `Error: Cannot rename: ${renameInfo.localizedErrorMessage}`;
 
-    const locations = ls.findRenameLocations(filePath, position, false, false, false);
+    const locations = ls.findRenameLocations(
+      filePath,
+      position,
+      false,
+      false,
+      false,
+    );
     if (!locations?.length)
       return `Error: No references found at ${path}:${line}:${column}`;
 
