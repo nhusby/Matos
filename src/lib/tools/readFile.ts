@@ -1,4 +1,5 @@
 import { readFile } from 'fs/promises';
+import { resolve } from 'path';
 import type { Tool } from '../Agent';
 
 export const readFileTool: Tool = {
@@ -11,5 +12,5 @@ export const readFileTool: Tool = {
     },
     required: ['path'],
   },
-  callback: async ({ path }) => readFile(path, 'utf-8'),
+  callback: async ({ path }) => readFile(resolve(path), 'utf-8'),
 };
