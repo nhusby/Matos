@@ -264,31 +264,34 @@ function formatOutput(
   const sections: string[] = [];
 
   if (signatures.size > 0) {
-    sections.push('=== Imported Signatures ===');
+    sections.push('<ImportedSignatures>');
     sections.push('```typescript');
     for (const sig of signatures.values()) {
       sections.push(sig);
       sections.push('');
     }
     sections.push('```');
+    sections.push('</ImportedSignatures>');
   }
 
   const orderedParents = getExtendsOrder(extendsMap, targetFilePath);
   for (const parentPath of orderedParents) {
     const relPath = relative(process.cwd(), parentPath);
-    sections.push(`=== Extended Class: ${relPath} ===`);
+    sections.push(`<ExtendedClass path="${relPath}">`);
     sections.push('```typescript');
     const content = ts.sys.readFile(parentPath);
     sections.push(content ?? `// Could not read ${relPath}`);
     sections.push('```');
+    sections.push('</ExtendedClass>');
   }
 
   const relTarget = relative(process.cwd(), targetFilePath);
-  sections.push(`=== ${relTarget} ===`);
+  sections.push(`<SourceFile path="${relTarget}">`);
   sections.push('```typescript');
   const targetContent = ts.sys.readFile(targetFilePath);
   sections.push(targetContent ?? `// Could not read ${relTarget}`);
   sections.push('```');
+  sections.push('</SourceFile>');
 
   return sections.join('\n');
 }
