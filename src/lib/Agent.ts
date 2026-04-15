@@ -211,7 +211,6 @@ export class Agent extends EventEmitter2 {
                     }
                     toolCall.result = tool.callback(toolCall.params);
                     toolCallResult.content = await toolCall.result;
-                    console.log(toolCallResult.content);
                   } catch (e: any) {
                     toolCall.result = Promise.resolve(e.message);
                   }

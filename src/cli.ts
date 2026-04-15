@@ -1,6 +1,6 @@
 import { createInterface } from 'readline';
 import OpenAI from 'openai';
-import { Agent } from './lib/Agent';
+import { Agent, ToolPart } from './lib/Agent';
 import {
   readFileTool,
   writeFileTool,
@@ -64,8 +64,15 @@ async function main() {
       process.stdout.write(chunk);
     });
 
+    response.on('toolCallResult', (toolCallResult: ToolPart) => {
+      console.log(`
+## ToolCall ${toolCallResult.name} Result
+${toolCallResult.content}
+`);
+    });
+
     await response;
-    console.log();
+    console.log('\n');
   }
 
   rl.on('line', (line) => {
