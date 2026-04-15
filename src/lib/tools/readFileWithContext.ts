@@ -222,13 +222,7 @@ function extractImportSignatures(
       if (!ts.isImportDeclaration(node)) return;
       if (!node.importClause) return;
 
-      const moduleSpecifier = node.moduleSpecifier;
-      if (!ts.isStringLiteral(moduleSpecifier)) return;
-      if (
-        !moduleSpecifier.text.startsWith('.') &&
-        !moduleSpecifier.text.startsWith('/')
-      )
-        return;
+      if (!ts.isStringLiteral(node.moduleSpecifier)) return;
 
       const importSymbols = collectImportSymbols(node, typeChecker);
       for (const { symbol } of importSymbols) {
@@ -241,7 +235,6 @@ function extractImportSignatures(
 
         const decl = decls[0];
         const declFile = decl.getSourceFile().fileName;
-        if (declFile.includes('node_modules')) continue;
         if (fullContentFiles.has(resolve(declFile))) continue;
 
         const key = `${resolved.name}::${declFile}`;

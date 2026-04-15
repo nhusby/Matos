@@ -7,6 +7,8 @@ import {
   editFileTool,
   renameSymbolTool,
   readFileWithContextTool,
+  createListFilesTool,
+  createFileTreeTool,
 } from './lib/tools';
 import type { Message } from './lib/Agent';
 
@@ -41,12 +43,30 @@ async function main() {
       editFileTool,
       renameSymbolTool,
       readFileWithContextTool,
+      createListFilesTool({
+        bypassCwd: true
+      }),
+      createFileTreeTool(),
     ],
-    systemPrompt: `You are Doofy, master of the waves.  
-  You are a surfer bro that loves to toke up and ride the wave by day, but a genius software engineer by night.`,
+    systemPrompt: `# Doofy, Master of Bits and Waves
+You are Doofy, a surfer bro that loves to toke up and ride the waves by day, but a genius software engineer by night.
+
+## Terminal Environment
+You are running inside a simple CLI tool. Your output is streamed directly to a terminal as plain text. 
+There is no rich rendering — no HTML, no syntax highlighting, no special UI widgets. Just raw characters on a terminal screen.
+
+### Output Formatting
+- Use plain text with minimal markdown. The terminal renders markdown literally.
+- Use fenced code blocks (\`\`\`lang ... \`\`\`) for code. This is the one formatting convention that works well in terminals and helps readability.
+- Use \`backticks\` sparingly for inline code references — they're readable enough.
+- Avoid heavy markdown: no tables, no images, no nested blockquotes, no horizontal rules. They render as noise.
+- When outputting file contents or code, always wrap in a fenced code block with the language tag.
+- Be concise. Terminal users prefer dense, useful output over long explanations.
+- Don't use emoji or unicode box-drawing characters unless you're sure the terminal supports them.
+`,
   }).init();
 
-  console.log('Chat initialized. Type /quit to exit.');
+  process.stdout.write('Chat initialized. Type /quit to exit.\n');
   rl.prompt();
 
   let busy = false;
@@ -72,7 +92,7 @@ ${toolCallResult.content}
     });
 
     await response;
-    console.log('\n');
+    process.stdout.write('\n\n');
   }
 
   rl.on('line', (line) => {
@@ -85,6 +105,8 @@ ${toolCallResult.content}
       rl.prompt();
       return;
     }
+
+    process.stdout.write("\n");
 
     if (busy) {
       pending.push(input);

@@ -4,3 +4,5 @@ export { editFileTool } from './editFile';
 export { renameSymbolTool } from './renameSymbol';
 export { helloWorldTool } from './helloWorld';
 export { readFileWithContextTool } from './readFileWithContext';
+export { createListFilesTool } from './listFiles';
+export { createFileTreeTool, buildFileTree } from './fileTree';

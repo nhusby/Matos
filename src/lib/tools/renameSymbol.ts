@@ -1,13 +1,37 @@
 import ts from 'typescript';
-import { resolve } from 'path';
+import { resolve, relative } from 'path';
 import { readFile, writeFile } from 'fs/promises';
 import type { Tool } from '../Agent';
 import { createLanguageService } from './languageServiceHost.js';
 
+function findNthIdentifierPosition(
+  sourceFile: ts.SourceFile,
+  name: string,
+  occurrence: number,
+): number | undefined {
+  let count = 0;
+  let found: number | undefined;
+
+  const visit = (node: ts.Node) => {
+    if (found !== undefined) return;
+    if (ts.isIdentifier(node) && node.text === name) {
+      count++;
+      if (count === occurrence) {
+        found = node.getStart(sourceFile);
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  ts.forEachChild(sourceFile, visit);
+  return found;
+}
+
 export const renameSymbolTool: Tool = {
   name: 'RenameSymbol',
   description:
-    'Rename a JS/TS symbol (variable, class, interface, property, function, etc.) across all files in the project. Uses the TypeScript Language Service for semantic-aware renaming — only renames actual code references, not comments or strings. Requires line and column to identify which symbol to rename.',
+    'Rename a symbol (variable, class, interface, property, function, etc.) across all files in the project. Uses the TypeScript Language Service for strict semantic-aware renaming of code references.',
   params: {
     type: 'object',
     properties: {
@@ -15,35 +39,37 @@ export const renameSymbolTool: Tool = {
         type: 'string',
         description: 'File path containing the symbol to rename.',
       },
-      line: {
-        type: 'number',
-        description: '1-based line number where the symbol appears.',
+      name: {
+        type: 'string',
+        description: 'The current name of the symbol to rename.',
       },
-      column: {
+      occurrence: {
         type: 'number',
         description:
-          '1-based column number (character offset within the line) where the symbol starts.',
+          'Which occurrence of the name in the file (1-based). Use this when the same name appears multiple times and you want a specific one. Default: 1.',
       },
       newName: { type: 'string', description: 'New name for the symbol.' },
     },
-    required: ['path', 'line', 'column', 'newName'],
+    required: ['path', 'name', 'newName'],
   },
-  callback: async ({ path, line, column, newName }) => {
+  callback: async ({ path, name, occurrence, newName }) => {
     const filePath = resolve(path);
+    const n = occurrence ?? 1;
 
     const { service: ls, program } = createLanguageService();
     const sourceFile = program.getSourceFile(filePath);
     if (!sourceFile) return `Error: Could not load file ${path}`;
 
-    const position = ts.getPositionOfLineAndCharacter(
-      sourceFile,
-      line - 1,
-      column - 1,
-    );
+    const position = findNthIdentifierPosition(sourceFile, name, n);
+    if (position === undefined)
+      return `Error: Could not find occurrence ${n} of "${name}" in ${relative(process.cwd(), filePath)}`;
 
     const renameInfo = ls.getRenameInfo(filePath, position);
     if (!renameInfo.canRename)
       return `Error: Cannot rename: ${renameInfo.localizedErrorMessage}`;
+
+    if (renameInfo.displayName !== name)
+      return `Error: Symbol at occurrence ${n} is "${renameInfo.displayName}", not "${name}". Check the file and retry.`;
 
     const locations = ls.findRenameLocations(
       filePath,
@@ -53,7 +79,7 @@ export const renameSymbolTool: Tool = {
       false,
     );
     if (!locations?.length)
-      return `Error: No references found at ${path}:${line}:${column}`;
+      return `Error: No references found for "${name}" in ${relative(process.cwd(), filePath)}`;
 
     const byFile = new Map<string, ts.RenameLocation[]>();
     for (const loc of locations) {
@@ -65,7 +91,6 @@ export const renameSymbolTool: Tool = {
 
     for (const [fileName, locs] of byFile) {
       let content = await readFile(fileName, 'utf-8');
-      // Apply in reverse order to preserve offsets
       const sorted = [...locs].sort(
         (a, b) => b.textSpan.start - a.textSpan.start,
       );
@@ -75,7 +100,7 @@ export const renameSymbolTool: Tool = {
           content.slice(0, start) + newName + content.slice(start + length);
       }
       await writeFile(fileName, content, 'utf-8');
-      results.push(`${locs.length} occurrence(s) in ${fileName}`);
+      results.push(`${locs.length} occurrence(s) in ${relative(process.cwd(), fileName)}`);
     }
 
     return `Renamed to "${newName}" across ${byFile.size} file(s):\n${results.join('\n')}`;
