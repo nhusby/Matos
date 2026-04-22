@@ -1,6 +1,6 @@
-import EventEmitter2 from 'eventemitter2';
-import OpenAI from 'openai';
+import { Emitter } from './Emitter.js';
 import { EmitterPromise } from './EmitterPromise.js';
+import OpenAI from 'openai';
 
 export interface Tool {
   name: string;
@@ -40,7 +40,7 @@ export interface Api extends OpenAI {
   _models: string[];
 }
 
-export class Agent extends EventEmitter2 {
+export class Agent extends Emitter {
   protected apis!: Api[];
   private apiIndex = 0;
   public get api(): Api {
@@ -124,7 +124,7 @@ export class Agent extends EventEmitter2 {
     response.parts!.push(part);
 
     (async () => {
-      await this.emitAsync('send', messages);
+      [messages] = await this.emitReplace('send', messages) as any;
       const abortController = new AbortController();
       const params = {
         stream: true as const,

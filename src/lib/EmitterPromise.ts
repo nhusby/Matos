@@ -1,6 +1,6 @@
-import EventEmitter2 from 'eventemitter2';
+import { Emitter } from './Emitter.js';
 
-export class EmitterPromise<T> extends EventEmitter2 implements Promise<T> {
+export class EmitterPromise<T> extends Emitter implements Promise<T> {
   private resolveFn?: (value: T) => void;
   private rejectFn?: (error: Error) => void;
   private promise = new Promise<T>((resolve, reject) => {
