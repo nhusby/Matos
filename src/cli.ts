@@ -2,6 +2,8 @@ import { createInterface } from 'readline';
 import OpenAI from 'openai';
 import { Agent, ToolPart } from './lib/Agent';
 import {
+  // TODO: grep/search tool, bash tool, delete file tool, move/rename file tool
+  // TODO Someday: MCP loader (show short description, tool to enable)
   readFileTool,
   writeFileTool,
   editFileTool,
