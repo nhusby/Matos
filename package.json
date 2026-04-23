@@ -10,8 +10,8 @@
     "build": "tsc",
     "start": "tsx src/index.ts",
     "cli": "tsx src/cli.ts",
-    "format": "prettier --write .",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "tsx test-tools.ts",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "eventemitter2": "^6.4.9",

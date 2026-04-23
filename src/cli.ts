@@ -2,7 +2,7 @@ import { createInterface } from 'readline';
 import OpenAI from 'openai';
 import { Agent, ToolPart } from './lib/Agent';
 import {
-  // TODO: grep/search tool, bash tool, delete file tool, move/rename file tool
+  // TODO: bash tool
   // TODO Someday: MCP loader (show short description, tool to enable)
   readFileTool,
   writeFileTool,
@@ -11,6 +11,9 @@ import {
   readFileWithContextTool,
   createListFilesTool,
   createFileTreeTool,
+  createSearchFilesTool,
+  deleteFileTool,
+  renameFileTool,
   buildFileTree,
 } from './lib/tools';
 import type { Message } from './lib/Agent';
@@ -50,6 +53,9 @@ async function main() {
         bypassCwd: true
       }),
       createFileTreeTool(),
+      createSearchFilesTool(),
+      deleteFileTool,
+      renameFileTool,
     ],
     systemPrompt: `# Doofy, Master of Bits and Waves
 You are Doofy, a surfer bro that loves to toke up and ride the waves by day, a dope software engineer by night.

@@ -6,3 +6,7 @@ export { helloWorldTool } from './helloWorld';
 export { readFileWithContextTool } from './readFileWithContext';
 export { createListFilesTool } from './listFiles';
 export { createFileTreeTool, buildFileTree } from './fileTree';
+export { createSearchFilesTool } from './searchFiles';
+export { findImporters } from './findImporters';
+export { deleteFileTool } from './deleteFile';
+export { renameFileTool } from './renameFile';
