@@ -252,6 +252,7 @@ function snake_case(key: string) {
 function toOpenAiMessages(messages: Message[]) {
   return messages
     .flatMap((msg) => (msg.parts ?? [msg]) as any)
+    .filter((msg) => !(msg.role === 'assistant' && !msg.content && !msg.toolCalls?.length))
     .map((part: AgentPart | ToolPart | Message) => {
       const obj: any = {};
       for (const key of [
