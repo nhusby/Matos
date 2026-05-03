@@ -1,5 +1,6 @@
 import { Emitter } from './Emitter.js';
 import { EmitterPromise } from './EmitterPromise.js';
+import { pruneContext } from './ContextPruner.js';
 import OpenAI from 'openai';
 
 export interface Tool {
@@ -7,6 +8,8 @@ export interface Tool {
   description: string;
   params?: any;
   callback: (params: any) => Promise<string>;
+  ttl?: number;
+  summarize?: boolean;
 }
 export interface ToolCall {
   id: string;
@@ -24,13 +27,18 @@ export interface ToolPart {
 export interface AgentPart {
   role: 'assistant';
   content: string;
+  reasoningContent?: string;
   toolCalls?: (ToolCall & { _argStr?: string })[];
+}
+export interface SystemPart {
+  role: 'system';
+  content: string;
 }
 export interface Message {
   role: 'user' | 'assistant' | 'system' | 'tool';
   name?: string;
   content: string;
-  parts?: (AgentPart | ToolPart)[];
+  parts?: (AgentPart | ToolPart | SystemPart)[];
   thinking?: boolean;
   loading?: boolean;
   created: Date;
@@ -151,11 +159,26 @@ export class Agent extends Emitter {
       for await (const chunk of stream) {
         try {
           for (const choice of chunk.choices) {
-            if (choice.delta.content) {
+            if ("reasoning_content" in choice.delta) {
+              if (!response.thinking) {
+                response.thinking = true;
+                await emitter.emitAsync('chunk', "<thinking>");
+              }
+              part.reasoningContent = (part.reasoningContent ?? '') + choice.delta.reasoning_content;
+              await emitter.emitAsync('chunk', choice.delta.reasoning_content);
+            } else if (choice.delta.content) {
+              if (response.thinking) {
+                response.thinking = false;
+                await emitter.emitAsync('chunk', "</thinking>\n\n");
+              }
               part.content += choice.delta.content;
               response.content += choice.delta.content;
               await emitter.emitAsync('chunk', choice.delta.content);
             } else if (choice.delta.refusal) {
+              if (response.thinking) {
+                response.thinking = false;
+                await emitter.emitAsync('chunk', "</thinking>\n\n");
+              }
               part.content += choice.delta.refusal;
               response.content += choice.delta.refusal;
               await emitter.emitAsync('chunk', choice.delta.refusal);
@@ -222,6 +245,10 @@ export class Agent extends Emitter {
               } else {
                 await emitter.emitAsync('finished', response);
                 await this.emitAsync('complete', response);
+                pruneContext(this.messages, this.tools, {
+                  api: this.api,
+                  model: this.model,
+                });
               }
               break;
             }
@@ -259,6 +286,7 @@ function toOpenAiMessages(messages: Message[]) {
         'role',
         'name',
         'content',
+        'reasoningContent',
         'toolCalls',
         'toolCallId',
       ]) {

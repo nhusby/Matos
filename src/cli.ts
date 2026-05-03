@@ -33,12 +33,12 @@ async function main() {
 
   const api = new OpenAI({
     apiKey,
-    baseURL: process.env['OPENAI_BASE_URL'],
+    baseURL: "http://ryzenrig:8080/v1",//process.env['OPENAI_BASE_URL'],
   }) as any;
-  const model = process.env['OPENAI_MODEL']?.split(',') ?? [
-    'gpt-4o',
-    'gpt-4o-mini',
-    'gpt-3.5-turbo',
+  const model = [
+    'Qwen3.6-35B-A3B',
+    'glm-5-turbo',
+    'gpt-5-mini',
   ];
   const agent = await new Agent({
     api,
