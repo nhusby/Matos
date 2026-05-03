@@ -6,6 +6,7 @@ export const editFileTool: Tool = {
   name: 'EditFile',
   description:
     'Edit a file by replacing an exact match of old_string with new_string. old_string must be unique in the file.',
+  ttl: 3,
   params: {
     type: 'object',
     properties: {

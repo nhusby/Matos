@@ -42,7 +42,7 @@ export async function pruneContext(
       if (part.role !== 'tool') continue;
 
       const config = toolConfig.get(part.name);
-      if (!config?.ttl || age <= config.ttl) continue;
+      if (!config?.ttl || age < config.ttl) continue;
 
       if (config.summarize && summarizeCtx) {
         const summary = await summarizeToolPart(

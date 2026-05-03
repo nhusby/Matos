@@ -32,6 +32,7 @@ export const renameSymbolTool: Tool = {
   name: 'RenameSymbol',
   description:
     'Rename a symbol (variable, class, interface, property, function, etc.) across all files in the project. Uses the TypeScript Language Service for strict semantic-aware renaming of code references.',
+  ttl: 3,
   params: {
     type: 'object',
     properties: {

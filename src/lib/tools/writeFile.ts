@@ -5,6 +5,7 @@ import type { Tool } from '../Agent';
 export const writeFileTool: Tool = {
   name: 'WriteFile',
   description: 'Write content to a file, creating it if it does not exist.',
+  ttl: 3,
   params: {
     type: 'object',
     properties: {
