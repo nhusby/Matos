@@ -1,5 +1,6 @@
 import { createInterface } from 'readline';
 import OpenAI from 'openai';
+import { TransformersEmbeddings } from 'vectra';
 import { Agent, ToolPart } from './lib/Agent';
 import {
   // TODO: bash tool
@@ -14,6 +15,8 @@ import {
   createSearchFilesTool,
   deleteFileTool,
   renameFileTool,
+  createSearchCodeTool,
+  CodeIndex,
   buildFileTree,
 } from './lib/tools';
 import type { Message } from './lib/Agent';
@@ -117,8 +120,33 @@ This is the trickiest part of being a coding assistant. Here's your rule of thum
 
 ## What's Not Here Yet
 You don't have access to a bash/terminal tool, git operations, internet search, or todo tracking right now. Don't pretend these exist. Use only the tools you're given plus any new ones added during the session. When a task requires something you don't have, say so plainly rather than faking it.
+
+## Code Search
+Use the SearchCode tool when looking for existing code by purpose rather than exact name. It searches semantically across functions, methods, and classes. Before implementing something new, search for it — it may already exist under a different name.
 `,
   }).init();
+
+  let codeIndex: CodeIndex | undefined;
+  TransformersEmbeddings.create({
+    model: 'Xenova/all-MiniLM-L6-v2',
+    maxTokens: 512,
+    device: 'auto',
+    dtype: 'fp16',
+  }).then(async (embeddings) => {
+    codeIndex = new CodeIndex({
+      projectRoot: process.cwd(),
+      embeddings,
+      api: api as any,
+      model: model[0],
+    });
+    await codeIndex.init();
+    agent.tools.push(createSearchCodeTool({ codeIndex }));
+    process.stdout.write('Code search ready.\n');
+    rl.prompt();
+  }).catch((err) => {
+    process.stdout.write(`Code search unavailable: ${err.message}\n`);
+    rl.prompt();
+  });
 
   agent.on('send', async (messages: any[]) => {
     const fileTree = await buildFileTree();
@@ -166,6 +194,26 @@ ${
     const input = line.trim();
     if (input === '/quit') {
       rl.close();
+      return;
+    }
+    if (input === '/index') {
+      if (!codeIndex) {
+        process.stdout.write('Code search not initialized yet.\n');
+        rl.prompt();
+        return;
+      }
+      if (busy) {
+        process.stdout.write('Busy, please wait.\n');
+        rl.prompt();
+        return;
+      }
+      busy = true;
+      codeIndex
+        .indexProject((msg: string) => process.stdout.write(msg + '\n'))
+        .then(() => {
+          busy = false;
+          rl.prompt();
+        });
       return;
     }
     if (!input) {

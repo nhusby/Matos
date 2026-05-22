@@ -11,12 +11,15 @@
     "start": "tsx src/index.ts",
     "cli": "tsx src/cli.ts",
     "test": "tsx test-tools.ts",
+    "index": "tsx src/index-code-rag.ts",
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
     "eventemitter2": "^6.4.9",
     "ignore": "^7.0.5",
-    "openai": "^6.33.0"
+    "openai": "^6.33.0",
+    "vectra": "^0.14.0"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

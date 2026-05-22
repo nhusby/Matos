@@ -10,3 +10,5 @@ export { createSearchFilesTool } from './searchFiles';
 export { findImporters } from './findImporters';
 export { deleteFileTool } from './deleteFile';
 export { renameFileTool } from './renameFile';
+export { createSearchCodeTool } from '../codeRag/searchCodeTool';
+export { CodeIndex } from '../codeRag/codeIndex';
