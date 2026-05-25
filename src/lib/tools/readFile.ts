@@ -5,6 +5,7 @@ import type { Tool } from '../Agent';
 export const readFileTool: Tool = {
   name: 'ReadFile',
   description: 'Read the contents of a file at the given path.',
+  ttl: 3,
   params: {
     type: 'object',
     properties: {

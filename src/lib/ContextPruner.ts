@@ -10,7 +10,8 @@ export async function pruneContext(
   messages: Message[],
   tools: Tool[],
   summarizeCtx?: SummarizeContext,
-): Promise<void> {
+): Promise<Set<string>> {
+  const prunedFiles = new Set<string>();
   const toolConfig = new Map<string, Pick<Tool, 'ttl' | 'summarize'>>(
     tools.map((t) => [t.name, { ttl: t.ttl, summarize: t.summarize }]),
   );
@@ -44,6 +45,14 @@ export async function pruneContext(
       const config = toolConfig.get(part.name);
       if (!config?.ttl || age < config.ttl) continue;
 
+      // Extract file path for readFile/readFileWithContext tools
+      if ((part.name === 'ReadFile' || part.name === 'ReadFileWithContext')) {
+        const tc = findToolCall(part.toolCallId, messages);
+        if (tc?.params?.path) {
+          prunedFiles.add(tc.params.path);
+        }
+      }
+
       if (config.summarize && summarizeCtx) {
         const summary = await summarizeToolPart(
           part,
@@ -58,6 +67,21 @@ export async function pruneContext(
       }
     }
   }
+
+  // Remove system messages with ttl (the injected file context)
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== 'system') continue;
+    const ttl = (msg as any).ttl;
+    if (typeof ttl === 'number' && ttl > 0) {
+      (msg as any).ttl -= 1;
+      if ((msg as any).ttl <= 0) {
+        messages.splice(i, 1);
+      }
+    }
+  }
+
+  return prunedFiles;
 }
 
 async function summarizeToolPart(

@@ -7,6 +7,7 @@ export const deleteFileTool: Tool = {
   name: 'DeleteFile',
   description:
     'Delete a file. For TypeScript and JavaScript files, also returns a list of files that import the deleted file so they can be updated.',
+  ttl: 3,
   params: {
     type: 'object',
     properties: {

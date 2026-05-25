@@ -6,10 +6,11 @@ export interface SearchFilesConfig {
   bypassCwd?: boolean;
 }
 
-export const createSearchFilesTool = (config: SearchFilesConfig = {}): Tool => ({
-  name: 'SearchFiles',
+export const createTextSearchTool = (config: SearchFilesConfig = {}): Tool => ({
+  name: 'TextSearch',
   description:
     'Search for a text pattern across files in a directory. Returns matching file paths, line numbers, and the matching lines. Supports substring and basic regex search.',
+  ttl: 3,
   params: {
     type: 'object',
     properties: {

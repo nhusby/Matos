@@ -7,6 +7,7 @@ export const renameFileTool: Tool = {
   name: 'RenameFile',
   description:
     'Rename or move a file. For TypeScript and JavaScript files, also returns a list of files that import the old path so their imports can be updated.',
+  ttl: 3,
   params: {
     type: 'object',
     properties: {

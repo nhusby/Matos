@@ -293,6 +293,7 @@ export const readFileWithContextTool: Tool = {
   name: 'ReadFileWithContext',
   description:
     'Read a TypeScript/JavaScript file with enriched context. Includes imported symbol type signatures (with JSDoc), extended class source files (recursively up to 3 levels), and the target file contents.',
+  ttl: 3,
   params: {
     type: 'object',
     properties: {

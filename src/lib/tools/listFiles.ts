@@ -10,6 +10,7 @@ export interface ListFilesConfig {
 export const createListFilesTool = (config: ListFilesConfig = {}): Tool => ({
   name: 'ListFiles',
   description: 'List files and directories at the given path. Directories have a trailing slash.',
+  ttl: 3,
   params: {
     type: 'object',
     properties: {

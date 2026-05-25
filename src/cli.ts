@@ -11,8 +11,7 @@ import {
   renameSymbolTool,
   readFileWithContextTool,
   createListFilesTool,
-  createFileTreeTool,
-  createSearchFilesTool,
+  createTextSearchTool,
   deleteFileTool,
   renameFileTool,
   createSearchCodeTool,
@@ -55,8 +54,7 @@ async function main() {
       createListFilesTool({
         bypassCwd: true
       }),
-      createFileTreeTool(),
-      createSearchFilesTool(),
+      createTextSearchTool(),
       deleteFileTool,
       renameFileTool,
     ],

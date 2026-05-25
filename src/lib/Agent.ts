@@ -1,3 +1,5 @@
+import ts from 'typescript';
+import { resolve } from 'path';
 import { Emitter } from './Emitter.js';
 import { EmitterPromise } from './EmitterPromise.js';
 import { pruneContext } from './ContextPruner.js';
@@ -69,6 +71,7 @@ export class Agent extends Emitter {
 
   tools: Tool[] = [];
   systemPrompt?: string;
+  readFiles: Set<string> = new Set();
 
   constructor(params: {
     api: Api | Api[];
@@ -245,10 +248,39 @@ export class Agent extends Emitter {
               } else {
                 await emitter.emitAsync('finished', response);
                 await this.emitAsync('complete', response);
-                pruneContext(this.messages, this.tools, {
+                const prunedFiles = await pruneContext(this.messages, this.tools, {
                   api: this.api,
                   model: this.model,
                 });
+
+                // Add pruned file paths to the read cache
+                for (const path of prunedFiles) {
+                  this.readFiles.add(path);
+                }
+
+                // Remove files that no longer exist on disk
+                for (const path of this.readFiles) {
+                  if (!ts.sys.fileExists(resolve(path))) {
+                    this.readFiles.delete(path);
+                  }
+                }
+
+                // Inject file context as system message if any files have been read
+                if (this.readFiles.size > 0) {
+                  const fileContents = [...this.readFiles]
+                    .map((path) => {
+                      const content = ts.sys.readFile(resolve(path));
+                      return `<File path="${path}">\n\`\`\`typescript\n${content ?? '[file not readable]'}\n\`\`\`\n</File>`;
+                    })
+                    .join('\n');
+
+                  this.messages.push({
+                    role: 'system',
+                    content: `<Files>\n${fileContents}\n</Files>`,
+                    created: new Date(),
+                    ttl: 1,
+                  } as any);
+                }
               }
               break;
             }
