@@ -19,6 +19,7 @@ import {
   buildFileTree,
 } from './lib/tools';
 import type { Message } from './lib/Agent';
+import { saveHistory, loadHistory } from './lib/HistoryManager.js';
 
 async function main() {
   const rl = createInterface({
@@ -117,7 +118,7 @@ This is the trickiest part of being a coding assistant. Here's your rule of thum
 - The judgment call: "Will this fix be wrong enough that I need to pause?" If yes, ask. If no, keep going and let the user correct you after. It's faster to make a small mistake and get corrected than to spend five minutes asking questions about stuff you could just try.
 
 ## What's Not Here Yet
-You don't have access to a bash/terminal tool, git operations, internet search, or todo tracking right now. Don't pretend these exist. Use only the tools you're given plus any new ones added during the session. When a task requires something you don't have, say so plainly rather than faking it.
+You don't have access to a bash/terminal tool, git operations, internet search, or todo tracking right now. Don't pretend these exist.  You can't run tsc or any other scripts.  Use only the tools you're given plus any new ones added during the session. When a task requires something you don't have, say so plainly rather than faking it.
 
 ## Code Search
 Use the SearchCode tool when looking for existing code by purpose rather than exact name. It searches semantically across functions, methods, and classes. Before implementing something new, search for it — it may already exist under a different name.
@@ -169,26 +170,29 @@ Use the SearchCode tool when looking for existing code by purpose rather than ex
     };
 
     const response = agent.sendMessage(message);
+    let thinking = false;
     response.on('chunk', (chunk: string) => {
-      process.stdout.write(chunk);
+      if (chunk === '<thinking>') { thinking = true; return; }
+      if (chunk === '</thinking>\n\n') { thinking = false; return; }
+      if (!thinking) process.stdout.write(chunk);
     });
 
     response.on('toolCallResult', (toolCallResult: ToolPart) => {
-      console.log(`
-## ToolCall ${toolCallResult.name} Result
-${
-  toolCallResult.content
-    .replace(/\s+/g, ' ')
-    .slice(0, 80)
-}
-`);
+      const pathInfo = toolCallResult.params?.path ? ` [${toolCallResult.params.path}]` : '';
+      console.log(`## ToolCall ${toolCallResult.name}${pathInfo} Result`);
+      console.log(
+        toolCallResult.content
+          .replace(/\s+/g, ' ')
+          .slice(0, 80),
+      );
     });
 
     await response;
     process.stdout.write('\n\n');
+    await saveHistory(agent);
   }
 
-  rl.on('line', (line) => {
+  rl.on('line', async (line) => {
     const input = line.trim();
     if (input === '/quit') {
       rl.close();
@@ -212,6 +216,36 @@ ${
           busy = false;
           rl.prompt();
         });
+      return;
+    }
+    if (input === '/resume') {
+      if (busy) {
+        process.stdout.write('Busy, please wait.\n');
+        rl.prompt();
+        return;
+      }
+      const result = await loadHistory(agent);
+      if (result.loaded) {
+        process.stdout.write(`Resumed from history: ${result.messageCount} messages loaded.\n\n`);
+        rl.prompt();
+        return;
+      } else {
+        process.stdout.write('No saved history found. Start fresh, dude.\n');
+        rl.prompt();
+        return;
+      }
+    }
+    if (input === '/clear') {
+      if (busy) {
+        process.stdout.write('Busy, please wait.\n');
+        rl.prompt();
+        return;
+      }
+      agent.messages = [];
+      agent.readFiles.clear();
+      await saveHistory(agent);
+      process.stdout.write('Cleared messages and read cache. Fresh start!\n\n');
+      rl.prompt();
       return;
     }
     if (!input) {

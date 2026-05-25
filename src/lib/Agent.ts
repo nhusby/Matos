@@ -25,6 +25,7 @@ export interface ToolPart {
   name: string;
   content: string;
   toolCallId: string;
+  params?: any;
 }
 export interface AgentPart {
   role: 'assistant';
@@ -240,7 +241,7 @@ export class Agent extends Emitter {
                   } catch (e: any) {
                     toolCall.result = Promise.resolve(e.message);
                   }
-                  await emitter.emitAsync('toolCallResult', toolCallResult);
+                  await emitter.emitAsync('toolCallResult', { ...toolCallResult, params: toolCall.params });
                 }
                 await this.sendMessages(this.messages, response).onAny(
                   (event, data) => emitter.emitAsync(event, data),
