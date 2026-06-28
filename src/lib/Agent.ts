@@ -135,171 +135,174 @@ export class Agent extends Emitter {
     };
     response.parts!.push(part);
 
-    (async () => {
-      [messages] = await this.emitReplace('send', messages) as any;
-      const abortController = new AbortController();
-      const params = {
-        stream: true as const,
-        signal: abortController.signal,
-        model: this.model,
-        messages: toOpenAiMessages(messages),
-        ...(this.tools.length
-          ? {
-              tools: this.tools.map((tool) => ({
-                type: 'function' as const,
-                function: {
-                  name: tool.name,
-                  description: tool.description,
-                  parameters: tool.params,
-                },
-              })),
-            }
-          : {}),
-      };
-      const stream = await this.api.chat.completions.create(
-        params as OpenAI.ChatCompletionCreateParamsStreaming,
-      );
-      this.apiIndex = (this.apiIndex + 1) % this.apis.length;
-      for await (const chunk of stream) {
-        try {
-          for (const choice of chunk.choices) {
-            if ("reasoning_content" in choice.delta) {
-              if (!response.thinking) {
-                response.thinking = true;
-                await emitter.emitAsync('chunk', "<thinking>");
+    setTimeout(() => {
+      (async () => {
+        [messages] = await this.emitReplace('send', messages) as any;
+        const abortController = new AbortController();
+        const params = {
+          stream: true as const,
+          signal: abortController.signal,
+          model: this.model,
+          messages: toOpenAiMessages(messages),
+          ...(this.tools.length
+              ? {
+                tools: this.tools.map((tool) => ({
+                  type: 'function' as const,
+                  function: {
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool.params,
+                  },
+                })),
               }
-              part.reasoningContent = (part.reasoningContent ?? '') + choice.delta.reasoning_content;
-              await emitter.emitAsync('chunk', choice.delta.reasoning_content);
-            } else if (choice.delta.content) {
-              if (response.thinking) {
-                response.thinking = false;
-                await emitter.emitAsync('chunk', "</thinking>\n\n");
-              }
-              part.content += choice.delta.content;
-              response.content += choice.delta.content;
-              await emitter.emitAsync('chunk', choice.delta.content);
-            } else if (choice.delta.refusal) {
-              if (response.thinking) {
-                response.thinking = false;
-                await emitter.emitAsync('chunk', "</thinking>\n\n");
-              }
-              part.content += choice.delta.refusal;
-              response.content += choice.delta.refusal;
-              await emitter.emitAsync('chunk', choice.delta.refusal);
-            }
-            if (choice.delta.tool_calls) {
-              for (const toolCall of choice.delta.tool_calls) {
-                if (!part.toolCalls![toolCall.index]) {
-                  // MaybeDo emit/invoke ToolCalls as they come in?
-                  part.toolCalls![toolCall.index] = {
-                    id: toolCall.id!,
-                    name: '',
-                    params: {},
-                    _argStr: '',
-                  };
+              : {}),
+        };
+        const stream = await this.api.chat.completions.create(
+            params as OpenAI.ChatCompletionCreateParamsStreaming,
+        );
+        this.apiIndex = (this.apiIndex + 1) % this.apis.length;
+        for await (const chunk of stream) {
+          try {
+            for (const choice of chunk.choices) {
+              if ("reasoning_content" in choice.delta) {
+                if (!response.thinking) {
+                  response.thinking = true;
+                  await emitter.emitAsync('chunk', "<thinking>");
                 }
-
-                if (toolCall.function?.name) {
-                  part.toolCalls![toolCall.index]!.name =
-                    (part.toolCalls![toolCall.index]!.name || '') +
-                    toolCall.function.name;
+                part.reasoningContent = (part.reasoningContent ?? '') + choice.delta.reasoning_content;
+                await emitter.emitAsync('chunk', choice.delta.reasoning_content);
+              } else if (choice.delta.content) {
+                if (response.thinking) {
+                  response.thinking = false;
+                  await emitter.emitAsync('chunk', "</thinking>\n\n");
                 }
-                if (toolCall.function?.arguments) {
-                  part.toolCalls![toolCall.index]!._argStr +=
-                    toolCall.function.arguments;
+                part.content += choice.delta.content;
+                response.content += choice.delta.content;
+                await emitter.emitAsync('chunk', choice.delta.content);
+              } else if (choice.delta.refusal) {
+                if (response.thinking) {
+                  response.thinking = false;
+                  await emitter.emitAsync('chunk', "</thinking>\n\n");
                 }
+                part.content += choice.delta.refusal;
+                response.content += choice.delta.refusal;
+                await emitter.emitAsync('chunk', choice.delta.refusal);
               }
-            }
-
-            if (choice.finish_reason) {
-              if (choice.finish_reason === 'tool_calls') {
-                for (const toolCall of part.toolCalls!) {
-                  const toolCallResult: ToolPart = {
-                    role: 'tool',
-                    name: toolCall.name,
-                    content: '',
-                    toolCallId: toolCall.id,
-                  };
-                  response.parts!.push(toolCallResult);
-                  try {
-                    if (toolCall._argStr) {
-                      toolCall.params = JSON.parse(toolCall._argStr);
-                    }
-                    await emitter.emitAsync('toolCall', {
-                      ...toolCall,
-                      result: undefined,
-                      argStr: undefined,
-                    });
-                    const tool = this.tools.find(
-                      (tool) => tool.name === toolCall.name,
-                    );
-                    if (!tool) {
-                      throw new Error(`tool ${toolCall.name} not found`);
-                    }
-                    toolCall.result = tool.callback(toolCall.params);
-                    toolCallResult.content = await toolCall.result;
-                  } catch (e: any) {
-                    toolCall.result = Promise.resolve(e.message);
+              if (choice.delta.tool_calls) {
+                for (const toolCall of choice.delta.tool_calls) {
+                  if (!part.toolCalls![toolCall.index]) {
+                    // MaybeDo emit/invoke ToolCalls as they come in?
+                    part.toolCalls![toolCall.index] = {
+                      id: toolCall.id!,
+                      name: '',
+                      params: {},
+                      _argStr: '',
+                    };
                   }
-                  await emitter.emitAsync('toolCallResult', { ...toolCallResult, params: toolCall.params });
-                }
-                await this.sendMessages(this.messages, response).onAny(
-                  (event, data) => emitter.emitAsync(event, data),
-                );
-              } else {
-                await emitter.emitAsync('finished', response);
-                await this.emitAsync('complete', response);
-                const prunedFiles = await pruneContext(this.messages, this.tools, {
-                  api: this.api,
-                  model: this.model,
-                });
 
-                // Add pruned file paths to the read cache
-                for (const path of prunedFiles) {
-                  this.readFiles.add(path);
-                }
-
-                // Remove files that no longer exist on disk
-                for (const path of this.readFiles) {
-                  if (!ts.sys.fileExists(resolve(path))) {
-                    this.readFiles.delete(path);
+                  if (toolCall.function?.name) {
+                    part.toolCalls![toolCall.index]!.name =
+                        (part.toolCalls![toolCall.index]!.name || '') +
+                        toolCall.function.name;
+                  }
+                  if (toolCall.function?.arguments) {
+                    part.toolCalls![toolCall.index]!._argStr +=
+                        toolCall.function.arguments;
                   }
                 }
-
-                // Inject file context as system message if any files have been read
-                if (this.readFiles.size > 0) {
-                  const fileContents = [...this.readFiles]
-                    .map((path) => {
-                      const content = ts.sys.readFile(resolve(path));
-                      return `<File path="${path}">\n\`\`\`typescript\n${content ?? '[file not readable]'}\n\`\`\`\n</File>`;
-                    })
-                    .join('\n');
-
-                  this.messages.push({
-                    role: 'system',
-                    content: `<Files>\n${fileContents}\n</Files>`,
-                    created: new Date(),
-                    ttl: 1,
-                  } as any);
-                }
               }
-              break;
+
+              if (choice.finish_reason) {
+                if (choice.finish_reason === 'tool_calls') {
+                  for (const toolCall of part.toolCalls!) {
+                    const toolCallResult: ToolPart = {
+                      role: 'tool',
+                      name: toolCall.name,
+                      content: '',
+                      toolCallId: toolCall.id,
+                    };
+                    response.parts!.push(toolCallResult);
+                    try {
+                      if (toolCall._argStr) {
+                        toolCall.params = JSON.parse(toolCall._argStr);
+                      }
+                      await emitter.emitAsync('toolCall', {
+                        ...toolCall,
+                        result: undefined,
+                        argStr: undefined,
+                      });
+                      const tool = this.tools.find(
+                          (tool) => tool.name === toolCall.name,
+                      );
+                      if (!tool) {
+                        throw new Error(`tool ${toolCall.name} not found`);
+                      }
+                      toolCall.result = tool.callback(toolCall.params);
+                      toolCallResult.content = await toolCall.result;
+                    } catch (e: any) {
+                      toolCall.result = Promise.resolve(e.message);
+                      toolCallResult.content = e.message;
+                    }
+                    await emitter.emitAsync('toolCallResult', { ...toolCallResult, params: toolCall.params });
+                  }
+                  await this.sendMessages(this.messages, response).onAny(
+                      (event, data) => emitter.emitAsync(event, data),
+                  );
+                } else {
+                  await emitter.emitAsync('finished', response);
+                  await this.emitAsync('complete', response);
+                  const prunedFiles = await pruneContext(this.messages, this.tools, {
+                    api: this.api,
+                    model: this.model,
+                  });
+
+                  // Add pruned file paths to the read cache
+                  for (const path of prunedFiles) {
+                    this.readFiles.add(path);
+                  }
+
+                  // Remove files that no longer exist on disk
+                  for (const path of this.readFiles) {
+                    if (!ts.sys.fileExists(resolve(path))) {
+                      this.readFiles.delete(path);
+                    }
+                  }
+
+                  // Inject file context as system message if any files have been read
+                  if (this.readFiles.size > 0) {
+                    const fileContents = [...this.readFiles]
+                        .map((path) => {
+                          const content = ts.sys.readFile(resolve(path));
+                          return `<File path="${path}">\n\`\`\`typescript\n${content ?? '[file not readable]'}\n\`\`\`\n</File>`;
+                        })
+                        .join('\n');
+
+                    this.messages.push({
+                      role: 'system',
+                      content: `<Files>\n${fileContents}\n</Files>`,
+                      created: new Date(),
+                      ttl: 1,
+                    } as any);
+                  }
+                }
+                break;
+              }
             }
+          } catch (error: any) {
+            emitter.emit('error', error);
+            abortController.abort();
+            throw error;
           }
-        } catch (error: any) {
-          emitter.emit('error', error);
-          abortController.abort();
-          throw error;
         }
-      }
 
-      return response;
-    })().then(
-      (response) => {
-        emitter.resolve(response!);
-      },
-      (e) => emitter.reject(e),
-    );
+        return response;
+      })().then(
+          (response) => {
+            emitter.resolve(response!);
+          },
+          (e) => emitter.reject(e),
+      );
+    }, 1)
 
     return emitter;
   }
