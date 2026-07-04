@@ -1,7 +1,7 @@
 import { createInterface } from 'readline';
 import OpenAI from 'openai';
 import { TransformersEmbeddings } from 'vectra';
-import { Agent, ToolPart } from './lib/Agent';
+import { Agent, ToolCall, ToolPart } from "./lib/Agent";
 import {
   // TODO: bash tool
   // TODO Someday: MCP loader (show short description, tool to enable)
@@ -147,7 +147,7 @@ Use the SearchCode tool when looking for existing code by purpose rather than ex
     rl.prompt();
   });
 
-  agent.on('send', async (messages: any[]) => {
+  agent.on('send-messages', async (messages: any[]) => {
     const fileTree = await buildFileTree();
     return [
       ...messages.slice(0, 1),
@@ -170,14 +170,15 @@ Use the SearchCode tool when looking for existing code by purpose rather than ex
     };
 
     const response = agent.sendMessage(message);
-    let thinking = false;
-    response.on('chunk', (chunk: string) => {
-      if (chunk === '<thinking>') { thinking = true; return; }
-      if (chunk === '</thinking>\n\n') { thinking = false; return; }
-      if (!thinking) process.stdout.write(chunk);
+    response.on('content', (chunk: string) => {
+      process.stdout.write(chunk);
     });
 
-    response.on('toolCallResult', (toolCallResult: ToolPart) => {
+    // response.on("tool-call", (toolCall: ToolCall) => {
+    //   console.log(toolCall);
+    // })
+
+    response.on('tool-result', (toolCallResult: ToolPart) => {
       const pathInfo = toolCallResult.params?.path ? ` [${toolCallResult.params.path}]` : '';
       console.log(`## ToolCall ${toolCallResult.name}${pathInfo} Result`);
       console.log(

@@ -37,6 +37,15 @@ export interface SystemPart {
   role: 'system';
   content: string;
 }
+
+export interface ProcessedMessage {
+  role: string;
+  content?: string;
+  name?: string;
+  reasoning_content?: string;
+  tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
+  tool_call_id?: string;
+}
 export interface Message {
   role: 'user' | 'assistant' | 'system' | 'tool';
   name?: string;
@@ -101,26 +110,41 @@ export class Agent extends Emitter {
   }
 
   public sendMessage(message: Message): EmitterPromise<Message> {
-    this.messages.push(message);
-    const response: Message = {
-      role: 'assistant',
-      content: '',
-      parts: [],
-      created: new Date(),
-    };
-    this.messages.push(response);
+    const emitter = new EmitterPromise<Message>();
 
-    return this.sendMessages(
-      [
-        {
-          role: 'system',
-          content: this.systemPrompt ?? '',
+    setTimeout(() => {
+      (async () => {
+        [message] = await this.emitReplace('send-message', message) as [Message];
+
+        this.messages.push(message);
+        const response: Message = {
+          role: 'assistant',
+          content: '',
+          parts: [],
           created: new Date(),
-        },
-        ...this.messages,
-      ],
-      response,
-    );
+        };
+        this.messages.push(response);
+
+        await emitter.emitAsync('start');
+        const result = await this.sendMessages(
+          [
+            {
+              role: 'system',
+              content: this.systemPrompt ?? '',
+              created: new Date(),
+            },
+            ...this.messages,
+          ],
+          response,
+        ).onAny((event, data) => emitter.emitAsync(event, data));
+        emitter.resolve(result);
+      })().then(
+        () => {},
+        (e) => emitter.reject(e),
+      );
+    }, 1);
+
+    return emitter;
   }
 
   public sendMessages(
@@ -137,13 +161,15 @@ export class Agent extends Emitter {
 
     setTimeout(() => {
       (async () => {
-        [messages] = await this.emitReplace('send', messages) as any;
+        [messages] = await this.emitReplace('send-messages', messages) as [Message[]];
         const abortController = new AbortController();
+        let openAiMessages = toOpenAiMessages(messages);
+        [openAiMessages] = await this.emitReplace('processed-messages', openAiMessages) as [ProcessedMessage[]];
         const params = {
           stream: true as const,
           signal: abortController.signal,
           model: this.model,
-          messages: toOpenAiMessages(messages),
+          messages: openAiMessages,
           ...(this.tools.length
               ? {
                 tools: this.tools.map((tool) => ({
@@ -167,26 +193,26 @@ export class Agent extends Emitter {
               if ("reasoning_content" in choice.delta) {
                 if (!response.thinking) {
                   response.thinking = true;
-                  await emitter.emitAsync('chunk', "<thinking>");
+                  await emitter.emitAsync('reasoning-start');
                 }
                 part.reasoningContent = (part.reasoningContent ?? '') + choice.delta.reasoning_content;
-                await emitter.emitAsync('chunk', choice.delta.reasoning_content);
+                await emitter.emitAsync('reasoning', choice.delta.reasoning_content);
               } else if (choice.delta.content) {
                 if (response.thinking) {
                   response.thinking = false;
-                  await emitter.emitAsync('chunk', "</thinking>\n\n");
+                  await emitter.emitAsync('reasoning-finished');
                 }
                 part.content += choice.delta.content;
                 response.content += choice.delta.content;
-                await emitter.emitAsync('chunk', choice.delta.content);
+                await emitter.emitAsync('content', choice.delta.content);
               } else if (choice.delta.refusal) {
                 if (response.thinking) {
                   response.thinking = false;
-                  await emitter.emitAsync('chunk', "</thinking>\n\n");
+                  await emitter.emitAsync('reasoning-finished');
                 }
                 part.content += choice.delta.refusal;
                 response.content += choice.delta.refusal;
-                await emitter.emitAsync('chunk', choice.delta.refusal);
+                await emitter.emitAsync('content', choice.delta.refusal);
               }
               if (choice.delta.tool_calls) {
                 for (const toolCall of choice.delta.tool_calls) {
@@ -226,7 +252,7 @@ export class Agent extends Emitter {
                       if (toolCall._argStr) {
                         toolCall.params = JSON.parse(toolCall._argStr);
                       }
-                      await emitter.emitAsync('toolCall', {
+                      await emitter.emitAsync('tool-call', {
                         ...toolCall,
                         result: undefined,
                         argStr: undefined,
@@ -243,7 +269,7 @@ export class Agent extends Emitter {
                       toolCall.result = Promise.resolve(e.message);
                       toolCallResult.content = e.message;
                     }
-                    await emitter.emitAsync('toolCallResult', { ...toolCallResult, params: toolCall.params });
+                    await emitter.emitAsync('tool-result', { ...toolCallResult, params: toolCall.params });
                   }
                   await this.sendMessages(this.messages, response).onAny(
                       (event, data) => emitter.emitAsync(event, data),
@@ -289,7 +315,6 @@ export class Agent extends Emitter {
               }
             }
           } catch (error: any) {
-            emitter.emit('error', error);
             abortController.abort();
             throw error;
           }
@@ -300,7 +325,10 @@ export class Agent extends Emitter {
           (response) => {
             emitter.resolve(response!);
           },
-          (e) => emitter.reject(e),
+          (e) => {
+            emitter.emit('error', e);
+            emitter.reject(e);
+          },
       );
     }, 1)
 
@@ -312,7 +340,7 @@ function snake_case(key: string) {
   return key.replace(/([A-Z])/g, '_$1').toLowerCase();
 }
 
-function toOpenAiMessages(messages: Message[]) {
+function toOpenAiMessages(messages: Message[]): ProcessedMessage[] {
   return messages
     .flatMap((msg) => (msg.parts ?? [msg]) as any)
     .filter((msg) => !(msg.role === 'assistant' && !msg.content && !msg.toolCalls?.length))

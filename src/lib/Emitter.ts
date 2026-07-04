@@ -1,6 +1,9 @@
 import EventEmitter2 from 'eventemitter2';
 
 export class Emitter extends EventEmitter2 {
+  constructor() {
+    super({ ignoreErrors: true });
+  }
   /**
    * Like emitAsync, but pipes the first argument through listeners in order.
    * Each listener receives (...args). If a listener returns a value
