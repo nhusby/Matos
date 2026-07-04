@@ -1,7 +1,8 @@
-import { createInterface } from 'readline';
+import { createInterface, emitKeypressEvents } from 'readline';
 import OpenAI from 'openai';
 import { TransformersEmbeddings } from 'vectra';
-import { Agent, ToolCall, ToolPart } from "./lib/Agent";
+import { Agent, ToolPart } from "./lib/Agent";
+import { Emitter } from "./lib/Emitter";
 import {
   // TODO: bash tool
   // TODO Someday: MCP loader (show short description, tool to enable)
@@ -156,8 +157,16 @@ Use the SearchCode tool when looking for existing code by purpose rather than ex
     ];
   });
 
-  process.stdout.write('Chat initialized. Type /quit to exit.\n');
+  process.stdout.write('Chat initialized. Type /quit to exit. Press ESC to abort.\n');
   rl.prompt();
+
+  let currentRun: Emitter | null = null;
+  emitKeypressEvents(process.stdin);
+  process.stdin.on('keypress', (_str: string, key: { name?: string } | undefined) => {
+    if (key?.name === 'escape' && currentRun) {
+      currentRun.abort();
+    }
+  });
 
   let busy = false;
   const pending: string[] = [];
@@ -169,16 +178,14 @@ Use the SearchCode tool when looking for existing code by purpose rather than ex
       created: new Date(),
     };
 
-    const response = agent.sendMessage(message);
-    response.on('content', (chunk: string) => {
+    const run = agent.sendMessage(message);
+    currentRun = run;
+
+    run.on('content', (chunk: string) => {
       process.stdout.write(chunk);
     });
 
-    // response.on("tool-call", (toolCall: ToolCall) => {
-    //   console.log(toolCall);
-    // })
-
-    response.on('tool-result', (toolCallResult: ToolPart) => {
+    run.on('tool-result', (toolCallResult: ToolPart) => {
       const pathInfo = toolCallResult.params?.path ? ` [${toolCallResult.params.path}]` : '';
       console.log(`## ToolCall ${toolCallResult.name}${pathInfo} Result`);
       console.log(
@@ -188,7 +195,20 @@ Use the SearchCode tool when looking for existing code by purpose rather than ex
       );
     });
 
-    await response;
+    run.on('finalizing', () => agent.reinjectReadFiles());
+
+    try {
+      await run.toPromise();
+    } catch (e: any) {
+      if (e?.name === 'AbortError') {
+        process.stdout.write('\n[aborted]\n');
+      } else {
+        process.stdout.write(`\n[error: ${e.message}]\n`);
+      }
+    } finally {
+      currentRun = null;
+    }
+
     process.stdout.write('\n\n');
     await saveHistory(agent);
   }

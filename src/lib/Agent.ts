@@ -1,7 +1,6 @@
 import ts from 'typescript';
 import { resolve } from 'path';
 import { Emitter } from './Emitter.js';
-import { EmitterPromise } from './EmitterPromise.js';
 import { pruneContext } from './ContextPruner.js';
 import OpenAI from 'openai';
 
@@ -37,7 +36,6 @@ export interface SystemPart {
   role: 'system';
   content: string;
 }
-
 export interface ProcessedMessage {
   role: string;
   content?: string;
@@ -60,7 +58,42 @@ export interface Api extends OpenAI {
   _models: string[];
 }
 
-export class Agent extends Emitter {
+export interface AgentEvents {
+  'send-message': Message;
+  'send-messages': Message[];
+  'processed-messages': ProcessedMessage[];
+}
+
+export interface MessageEvents {
+  /**  Agent turn start */
+  start: void;
+  /** Housekeeping after LLM has finished generating tokens */
+  finalizing: Message;
+  /** Agent turn end */
+  end: Message;
+  /** token generation was aborted */
+  aborted: Message;
+  /** any error event */
+  error: Error;
+  /** <thinking> */
+  'reasoning-start': void;
+  /** reasoning token stream chunk */
+  reasoning: string;
+  /** </thinking> */
+  'reasoning-finished': void;
+  /** content token stream chunk */
+  content: string;
+  /** the agent requested use of a tool.  Throwing an error in the handler will reject the request. */
+  'tool-call': ToolCall;
+  /** The result of tool execution */
+  'tool-result': ToolPart;
+}
+
+const MAX_STEPS = 128;
+const LOOP_WINDOW = 5;
+const LOOP_THRESHOLD = 3;
+
+export class Agent extends Emitter<AgentEvents> {
   protected apis!: Api[];
   private apiIndex = 0;
   public get api(): Api {
@@ -97,61 +130,71 @@ export class Agent extends Emitter {
   }
 
   async init() {
-    for (const api of this.apis) {
+    await Promise.all(this.apis.map(async (api) => {
       api._models = [];
       for await (const page of (await api.models.list()).iterPages()) {
         for (const model of page.getPaginatedItems()) {
           api._models.push(model.id);
         }
       }
-    }
+    }));
 
     return this;
   }
 
-  public sendMessage(message: Message): EmitterPromise<Message> {
-    const emitter = new EmitterPromise<Message>();
-
-    setTimeout(() => {
-      (async () => {
-        [message] = await this.emitReplace('send-message', message) as [Message];
-
-        this.messages.push(message);
-        const response: Message = {
-          role: 'assistant',
-          content: '',
-          parts: [],
-          created: new Date(),
-        };
-        this.messages.push(response);
-
-        await emitter.emitAsync('start');
-        const result = await this.sendMessages(
-          [
-            {
-              role: 'system',
-              content: this.systemPrompt ?? '',
-              created: new Date(),
-            },
-            ...this.messages,
-          ],
-          response,
-        ).onAny((event, data) => emitter.emitAsync(event, data));
-        emitter.resolve(result);
-      })().then(
-        () => {},
-        (e) => emitter.reject(e),
-      );
-    }, 1);
-
+  public sendMessage(message: Message): Emitter<MessageEvents> {
+    const emitter = new Emitter<MessageEvents>();
+    this.#beginSend(message, emitter).catch((e) => emitter.emit('error', e));
     return emitter;
   }
 
-  public sendMessages(
+  async #beginSend(message: Message, emitter: Emitter<MessageEvents>): Promise<void> {
+    [message] = await this.emitReplace('send-message', message);
+    this.messages.push(message);
+
+    const response: Message = {
+      role: 'assistant',
+      content: '',
+      parts: [],
+      created: new Date(),
+    };
+    this.messages.push(response);
+
+    await emitter.emitAsync('start');
+
+    const messages: Message[] = [
+      {
+        role: 'system',
+        content: this.systemPrompt ?? '',
+        created: new Date(),
+      },
+      ...this.messages,
+    ];
+
+    try {
+      await this.#streamMessages(messages, response, emitter, 0, []);
+      await emitter.emitAsync('finalizing', response);
+      emitter.emit('end', response);
+    } catch (e: any) {
+      if (e?.name === 'AbortError') {
+        emitter.emit('aborted', response);
+        return;
+      }
+      throw e;
+    }
+  }
+
+  async #streamMessages(
     messages: Message[],
     response: Message,
-  ): EmitterPromise<Message> {
-    const emitter = new EmitterPromise<Message>();
+    emitter: Emitter<MessageEvents>,
+    depth: number,
+    recentCalls: string[],
+  ): Promise<void> {
+    if (depth >= MAX_STEPS) {
+      throw new Error(`Max steps (${MAX_STEPS}) exceeded`);
+    }
+
     const part: AgentPart = {
       role: 'assistant',
       content: '',
@@ -159,180 +202,201 @@ export class Agent extends Emitter {
     };
     response.parts!.push(part);
 
-    setTimeout(() => {
-      (async () => {
-        [messages] = await this.emitReplace('send-messages', messages) as [Message[]];
-        const abortController = new AbortController();
-        let openAiMessages = toOpenAiMessages(messages);
-        [openAiMessages] = await this.emitReplace('processed-messages', openAiMessages) as [ProcessedMessage[]];
-        const params = {
-          stream: true as const,
-          signal: abortController.signal,
-          model: this.model,
-          messages: openAiMessages,
-          ...(this.tools.length
-              ? {
-                tools: this.tools.map((tool) => ({
-                  type: 'function' as const,
-                  function: {
-                    name: tool.name,
-                    description: tool.description,
-                    parameters: tool.params,
-                  },
-                })),
-              }
-              : {}),
-        };
-        const stream = await this.api.chat.completions.create(
-            params as OpenAI.ChatCompletionCreateParamsStreaming,
-        );
-        this.apiIndex = (this.apiIndex + 1) % this.apis.length;
-        for await (const chunk of stream) {
-          try {
-            for (const choice of chunk.choices) {
-              if ("reasoning_content" in choice.delta) {
-                if (!response.thinking) {
-                  response.thinking = true;
-                  await emitter.emitAsync('reasoning-start');
-                }
-                part.reasoningContent = (part.reasoningContent ?? '') + choice.delta.reasoning_content;
-                await emitter.emitAsync('reasoning', choice.delta.reasoning_content);
-              } else if (choice.delta.content) {
-                if (response.thinking) {
-                  response.thinking = false;
-                  await emitter.emitAsync('reasoning-finished');
-                }
-                part.content += choice.delta.content;
-                response.content += choice.delta.content;
-                await emitter.emitAsync('content', choice.delta.content);
-              } else if (choice.delta.refusal) {
-                if (response.thinking) {
-                  response.thinking = false;
-                  await emitter.emitAsync('reasoning-finished');
-                }
-                part.content += choice.delta.refusal;
-                response.content += choice.delta.refusal;
-                await emitter.emitAsync('content', choice.delta.refusal);
-              }
-              if (choice.delta.tool_calls) {
-                for (const toolCall of choice.delta.tool_calls) {
-                  if (!part.toolCalls![toolCall.index]) {
-                    // MaybeDo emit/invoke ToolCalls as they come in?
-                    part.toolCalls![toolCall.index] = {
-                      id: toolCall.id!,
-                      name: '',
-                      params: {},
-                      _argStr: '',
-                    };
-                  }
+    let [transformed] = await this.emitReplace('send-messages', messages);
+    let openAiMessages = toOpenAiMessages(transformed);
+    [openAiMessages] = await this.emitReplace('processed-messages', openAiMessages);
 
-                  if (toolCall.function?.name) {
-                    part.toolCalls![toolCall.index]!.name =
-                        (part.toolCalls![toolCall.index]!.name || '') +
-                        toolCall.function.name;
-                  }
-                  if (toolCall.function?.arguments) {
-                    part.toolCalls![toolCall.index]!._argStr +=
-                        toolCall.function.arguments;
-                  }
-                }
+    const params = {
+      stream: true as const,
+      signal: emitter.abortController.signal,
+      model: this.model,
+      messages: openAiMessages,
+      ...(this.tools.length
+        ? {
+            tools: this.tools.map((tool) => ({
+              type: 'function' as const,
+              function: {
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.params,
+              },
+            })),
+          }
+        : {}),
+    };
+    const stream = await this.api.chat.completions.create(
+      params as OpenAI.ChatCompletionCreateParamsStreaming,
+    );
+    this.apiIndex = (this.apiIndex + 1) % this.apis.length;
+
+    try {
+      for await (const chunk of stream) {
+        for (const choice of chunk.choices) {
+          if ('reasoning_content' in choice.delta) {
+            if (!response.thinking) {
+              response.thinking = true;
+              await emitter.emitAsync('reasoning-start');
+            }
+            part.reasoningContent = (part.reasoningContent ?? '') + choice.delta.reasoning_content;
+            await emitter.emitAsync('reasoning', choice.delta.reasoning_content);
+          } else if (choice.delta.content) {
+            if (response.thinking) {
+              response.thinking = false;
+              await emitter.emitAsync('reasoning-finished');
+            }
+            part.content += choice.delta.content;
+            response.content += choice.delta.content;
+            await emitter.emitAsync('content', choice.delta.content);
+          } else if (choice.delta.refusal) {
+            if (response.thinking) {
+              response.thinking = false;
+              await emitter.emitAsync('reasoning-finished');
+            }
+            part.content += choice.delta.refusal;
+            response.content += choice.delta.refusal;
+            await emitter.emitAsync('content', choice.delta.refusal);
+          }
+
+          if (choice.delta.tool_calls) {
+            for (const toolCall of choice.delta.tool_calls) {
+              if (!part.toolCalls![toolCall.index]) {
+                part.toolCalls![toolCall.index] = {
+                  id: toolCall.id!,
+                  name: '',
+                  params: {},
+                  _argStr: '',
+                };
               }
 
-              if (choice.finish_reason) {
-                if (choice.finish_reason === 'tool_calls') {
-                  for (const toolCall of part.toolCalls!) {
-                    const toolCallResult: ToolPart = {
-                      role: 'tool',
-                      name: toolCall.name,
-                      content: '',
-                      toolCallId: toolCall.id,
-                    };
-                    response.parts!.push(toolCallResult);
-                    try {
-                      if (toolCall._argStr) {
-                        toolCall.params = JSON.parse(toolCall._argStr);
-                      }
-                      await emitter.emitAsync('tool-call', {
-                        ...toolCall,
-                        result: undefined,
-                        argStr: undefined,
-                      });
-                      const tool = this.tools.find(
-                          (tool) => tool.name === toolCall.name,
-                      );
-                      if (!tool) {
-                        throw new Error(`tool ${toolCall.name} not found`);
-                      }
-                      toolCall.result = tool.callback(toolCall.params);
-                      toolCallResult.content = await toolCall.result;
-                    } catch (e: any) {
-                      toolCall.result = Promise.resolve(e.message);
-                      toolCallResult.content = e.message;
-                    }
-                    await emitter.emitAsync('tool-result', { ...toolCallResult, params: toolCall.params });
-                  }
-                  await this.sendMessages(this.messages, response).onAny(
-                      (event, data) => emitter.emitAsync(event, data),
-                  );
-                } else {
-                  await emitter.emitAsync('finished', response);
-                  await this.emitAsync('complete', response);
-                  const prunedFiles = await pruneContext(this.messages, this.tools, {
-                    api: this.api,
-                    model: this.model,
-                  });
-
-                  // Add pruned file paths to the read cache
-                  for (const path of prunedFiles) {
-                    this.readFiles.add(path);
-                  }
-
-                  // Remove files that no longer exist on disk
-                  for (const path of this.readFiles) {
-                    if (!ts.sys.fileExists(resolve(path))) {
-                      this.readFiles.delete(path);
-                    }
-                  }
-
-                  // Inject file context as system message if any files have been read
-                  if (this.readFiles.size > 0) {
-                    const fileContents = [...this.readFiles]
-                        .map((path) => {
-                          const content = ts.sys.readFile(resolve(path));
-                          return `<File path="${path}">\n\`\`\`typescript\n${content ?? '[file not readable]'}\n\`\`\`\n</File>`;
-                        })
-                        .join('\n');
-
-                    this.messages.push({
-                      role: 'system',
-                      content: `<Files>\n${fileContents}\n</Files>`,
-                      created: new Date(),
-                      ttl: 1,
-                    } as any);
-                  }
-                }
-                break;
+              if (toolCall.function?.name) {
+                part.toolCalls![toolCall.index]!.name =
+                  (part.toolCalls![toolCall.index]!.name || '') +
+                  toolCall.function.name;
+              }
+              if (toolCall.function?.arguments) {
+                part.toolCalls![toolCall.index]!._argStr +=
+                  toolCall.function.arguments;
               }
             }
-          } catch (error: any) {
-            abortController.abort();
-            throw error;
+          }
+
+          if (choice.finish_reason) {
+            if (choice.finish_reason === 'tool_calls') {
+              const nextRecent = await this.#executeToolCalls(
+                part,
+                response,
+                emitter,
+                recentCalls,
+              );
+              await this.#streamMessages(
+                this.messages,
+                response,
+                emitter,
+                depth + 1,
+                nextRecent,
+              );
+            }
+            break;
           }
         }
+      }
+    } catch (e: any) {
+      if (e?.name === 'AbortError') {
+        throw e;
+      }
+      emitter.abortController.abort();
+      throw e;
+    }
+  }
 
-        return response;
-      })().then(
-          (response) => {
-            emitter.resolve(response!);
-          },
-          (e) => {
-            emitter.emit('error', e);
-            emitter.reject(e);
-          },
-      );
-    }, 1)
+  async #executeToolCalls(
+    part: AgentPart,
+    response: Message,
+    emitter: Emitter<MessageEvents>,
+    recentCalls: string[],
+  ): Promise<string[]> {
+    let nextRecent = recentCalls;
 
-    return emitter;
+    for (const toolCall of part.toolCalls!) {
+      const toolCallResult: ToolPart = {
+        role: 'tool',
+        name: toolCall.name,
+        content: '',
+        toolCallId: toolCall.id,
+      };
+      response.parts!.push(toolCallResult);
+
+      try {
+        if (toolCall._argStr) {
+          toolCall.params = JSON.parse(toolCall._argStr);
+        }
+
+        const hash = `${toolCall.name}:${JSON.stringify(toolCall.params)}`;
+        nextRecent = [...nextRecent, hash].slice(-LOOP_WINDOW);
+        const counts = new Map<string, number>();
+        for (const c of nextRecent) counts.set(c, (counts.get(c) ?? 0) + 1);
+        if ([...counts.values()].some((v) => v >= LOOP_THRESHOLD)) {
+          throw new Error(
+            `Loop detected: tool "${toolCall.name}" called ${LOOP_THRESHOLD}+ times with identical args in the last ${LOOP_WINDOW} calls`,
+          );
+        }
+
+        await emitter.emitAsync('tool-call', {
+          ...toolCall,
+          result: undefined,
+          argStr: undefined,
+        });
+        const tool = this.tools.find((t) => t.name === toolCall.name);
+        if (!tool) {
+          throw new Error(`tool ${toolCall.name} not found`);
+        }
+        toolCall.result = tool.callback(toolCall.params);
+        toolCallResult.content = await toolCall.result;
+      } catch (e: any) {
+        toolCall.result = Promise.resolve(e.message);
+        toolCallResult.content = e.message;
+      }
+
+      await emitter.emitAsync('tool-result', {
+        ...toolCallResult,
+        params: toolCall.params,
+      });
+    }
+
+    return nextRecent;
+  }
+
+  async reinjectReadFiles(): Promise<void> {
+    const prunedFiles = await pruneContext(this.messages, this.tools, {
+      api: this.api,
+      model: this.model,
+    });
+
+    for (const path of prunedFiles) {
+      this.readFiles.add(path);
+    }
+
+    for (const path of this.readFiles) {
+      if (!ts.sys.fileExists(resolve(path))) {
+        this.readFiles.delete(path);
+      }
+    }
+
+    if (this.readFiles.size > 0) {
+      const fileContents = [...this.readFiles]
+        .map((path) => {
+          const content = ts.sys.readFile(resolve(path));
+          return `<File path="${path}">\n\`\`\`typescript\n${content ?? '[file not readable]'}\n\`\`\`\n</File>`;
+        })
+        .join('\n');
+
+      this.messages.push({
+        role: 'system',
+        content: `<Files>\n${fileContents}\n</Files>`,
+        created: new Date(),
+        ttl: 1,
+      } as any);
+    }
   }
 }
 
