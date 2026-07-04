@@ -33,34 +33,32 @@ export class Emitter<T = unknown> extends EventEmitter2 {
     return super.once(event, listener) as this;
   }
 
-  emit<K extends keyof T>(event: K, arg: T[K]): boolean;
-  emit(event: string | symbol, ...values: any[]): boolean;
-  emit(event: string | symbol, ...values: any[]): boolean {
-    return super.emit(event, ...values);
-  }
-
-  emitAsync<K extends keyof T>(event: K, arg: T[K]): Promise<any[]>;
-  emitAsync(event: string | symbol, ...values: any[]): Promise<any[]>;
-  emitAsync(event: string | symbol, ...values: any[]): Promise<any[]> {
-    return super.emitAsync(event, ...values);
-  }
-
   /**
-   * Pipes the argument through listeners in order. If a listener returns
-   * a value (not undefined), it replaces the argument for the next listener.
+   * Notifies onAny listeners with (event, arg), then pipes arg through event
+   * listeners sequentially. A listener returning a non-undefined value
+   * replaces the arg for subsequent listeners and becomes the return value.
+   * Arg is optional for void events.
    */
-  protected async emitReplace<K extends keyof T>(
-    event: K,
-    arg: T[K],
-  ): Promise<[T[K]]> {
-    const list = this.listeners(event as string) as Array<(arg: T[K]) => any>;
+  // @ts-expect-error - intentionally returns Promise<T> instead of boolean
+  emit<K extends keyof T>(...args: T[K] extends void ? [event: K] : [event: K, arg: T[K]]): Promise<T[K]>;
+  // @ts-expect-error - intentionally returns Promise<T> instead of boolean
+  emit(event: string | symbol, arg?: any): Promise<any>;
+  // @ts-expect-error - intentionally returns Promise<T> instead of boolean
+  async emit(event: string | symbol, arg?: any): Promise<any> {
+    const all = (this as any)._all as Array<(event: any, arg: any) => any> | undefined;
+    if (all) {
+      for (const fn of all) {
+        await fn(event, arg);
+      }
+    }
+    const ls = ((this.listeners(event) as any[]) || []).slice() as Array<(arg: any) => any>;
     let value = arg;
-    for (const listener of list) {
+    for (const listener of ls) {
       const result = await listener(value);
       if (result !== undefined) {
         value = result;
       }
     }
-    return [value];
+    return value;
   }
 }

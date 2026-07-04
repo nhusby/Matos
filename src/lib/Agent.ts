@@ -1,7 +1,4 @@
-import ts from 'typescript';
-import { resolve } from 'path';
 import { Emitter } from './Emitter.js';
-import { pruneContext } from './ContextPruner.js';
 import OpenAI from 'openai';
 
 export interface Tool {
@@ -58,7 +55,7 @@ export interface Api extends OpenAI {
   _models: string[];
 }
 
-export interface AgentEvents {
+export interface AgentEvents extends MessageEvents {
   'send-message': Message;
   'send-messages': Message[];
   'processed-messages': ProcessedMessage[];
@@ -144,12 +141,15 @@ export class Agent extends Emitter<AgentEvents> {
 
   public sendMessage(message: Message): Emitter<MessageEvents> {
     const emitter = new Emitter<MessageEvents>();
+    emitter.onAny(async (eventName: any, ...args: any[]) => {
+      await this.emit(eventName as keyof AgentEvents, args[0]);
+    });
     this.#beginSend(message, emitter).catch((e) => emitter.emit('error', e));
     return emitter;
   }
 
   async #beginSend(message: Message, emitter: Emitter<MessageEvents>): Promise<void> {
-    [message] = await this.emitReplace('send-message', message);
+    message = await this.emit('send-message', message);
     this.messages.push(message);
 
     const response: Message = {
@@ -160,7 +160,7 @@ export class Agent extends Emitter<AgentEvents> {
     };
     this.messages.push(response);
 
-    await emitter.emitAsync('start');
+    await emitter.emit('start');
 
     const messages: Message[] = [
       {
@@ -173,11 +173,11 @@ export class Agent extends Emitter<AgentEvents> {
 
     try {
       await this.#streamMessages(messages, response, emitter, 0, []);
-      await emitter.emitAsync('finalizing', response);
-      emitter.emit('end', response);
+      await emitter.emit('finalizing', response);
+      await emitter.emit('end', response);
     } catch (e: any) {
       if (e?.name === 'AbortError') {
-        emitter.emit('aborted', response);
+        await emitter.emit('aborted', response);
         return;
       }
       throw e;
@@ -202,9 +202,9 @@ export class Agent extends Emitter<AgentEvents> {
     };
     response.parts!.push(part);
 
-    let [transformed] = await this.emitReplace('send-messages', messages);
+    let transformed = await this.emit('send-messages', messages);
     let openAiMessages = toOpenAiMessages(transformed);
-    [openAiMessages] = await this.emitReplace('processed-messages', openAiMessages);
+    openAiMessages = await this.emit('processed-messages', openAiMessages);
 
     const params = {
       stream: true as const,
@@ -235,26 +235,26 @@ export class Agent extends Emitter<AgentEvents> {
           if ('reasoning_content' in choice.delta) {
             if (!response.thinking) {
               response.thinking = true;
-              await emitter.emitAsync('reasoning-start');
+              await emitter.emit('reasoning-start');
             }
             part.reasoningContent = (part.reasoningContent ?? '') + choice.delta.reasoning_content;
-            await emitter.emitAsync('reasoning', choice.delta.reasoning_content);
+            await emitter.emit('reasoning', choice.delta.reasoning_content);
           } else if (choice.delta.content) {
             if (response.thinking) {
               response.thinking = false;
-              await emitter.emitAsync('reasoning-finished');
+              await emitter.emit('reasoning-finished');
             }
             part.content += choice.delta.content;
             response.content += choice.delta.content;
-            await emitter.emitAsync('content', choice.delta.content);
+            await emitter.emit('content', choice.delta.content);
           } else if (choice.delta.refusal) {
             if (response.thinking) {
               response.thinking = false;
-              await emitter.emitAsync('reasoning-finished');
+              await emitter.emit('reasoning-finished');
             }
             part.content += choice.delta.refusal;
             response.content += choice.delta.refusal;
-            await emitter.emitAsync('content', choice.delta.refusal);
+            await emitter.emit('content', choice.delta.refusal);
           }
 
           if (choice.delta.tool_calls) {
@@ -341,7 +341,7 @@ export class Agent extends Emitter<AgentEvents> {
           );
         }
 
-        await emitter.emitAsync('tool-call', {
+        await emitter.emit('tool-call', {
           ...toolCall,
           result: undefined,
           argStr: undefined,
@@ -357,46 +357,13 @@ export class Agent extends Emitter<AgentEvents> {
         toolCallResult.content = e.message;
       }
 
-      await emitter.emitAsync('tool-result', {
+      await emitter.emit('tool-result', {
         ...toolCallResult,
         params: toolCall.params,
       });
     }
 
     return nextRecent;
-  }
-
-  async reinjectReadFiles(): Promise<void> {
-    const prunedFiles = await pruneContext(this.messages, this.tools, {
-      api: this.api,
-      model: this.model,
-    });
-
-    for (const path of prunedFiles) {
-      this.readFiles.add(path);
-    }
-
-    for (const path of this.readFiles) {
-      if (!ts.sys.fileExists(resolve(path))) {
-        this.readFiles.delete(path);
-      }
-    }
-
-    if (this.readFiles.size > 0) {
-      const fileContents = [...this.readFiles]
-        .map((path) => {
-          const content = ts.sys.readFile(resolve(path));
-          return `<File path="${path}">\n\`\`\`typescript\n${content ?? '[file not readable]'}\n\`\`\`\n</File>`;
-        })
-        .join('\n');
-
-      this.messages.push({
-        role: 'system',
-        content: `<Files>\n${fileContents}\n</Files>`,
-        created: new Date(),
-        ttl: 1,
-      } as any);
-    }
   }
 }
 
