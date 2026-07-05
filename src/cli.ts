@@ -2,8 +2,7 @@ import { createInterface, emitKeypressEvents } from 'readline';
 import OpenAI from 'openai';
 import { ToolPart } from './lib/Agent';
 import { Emitter } from './lib/Emitter';
-import { createDevAgent } from './agents/dev';
-import type { Agent, Message } from './lib/Agent';
+import { createAgent } from './agents/matos';
 import type { CodeIndex } from './lib/tools';
 import { saveHistory, loadHistory } from './lib/HistoryManager.js';
 
@@ -27,7 +26,7 @@ async function main() {
   const model = ['Qwen3.6-35B-A3B', 'glm-5-turbo', 'gpt-5-mini'];
 
   let codeIndex: CodeIndex | undefined;
-  const agent = await createDevAgent({
+  const agent = await createAgent({
     api,
     model,
     onCodeIndexReady: (ci) => {
@@ -55,52 +54,63 @@ async function main() {
   let busy = false;
   const pending: string[] = [];
 
+  async function persistHistory() {
+    try {
+      await saveHistory(agent);
+    } catch (e: any) {
+      process.stderr.write(`[history save failed: ${e?.message ?? e}]\n`);
+    }
+  }
+
   async function handleInput(input: string) {
-    const message: Message = {
+    currentRun = agent.sendMessage({
       role: 'user',
       content: input,
       created: new Date(),
-    };
-
-    const run = agent.sendMessage(message);
-    currentRun = run;
-
-    run.on('content', (chunk: string) => {
-      process.stdout.write(chunk);
     });
 
-    run.on('tool-result', (toolCallResult: ToolPart) => {
-      const pathInfo = toolCallResult.params?.path ? ` [${toolCallResult.params.path}]` : '';
-      console.log(`## ToolCall ${toolCallResult.name}${pathInfo} Result`);
-      console.log(
-        toolCallResult.content
-          .replace(/\s+/g, ' ')
-          .slice(0, 80),
-      );
+    currentRun.on('content', (chunk: string) => process.stdout.write(chunk));
+    currentRun.on('tool-result', (tr: ToolPart) => {
+      const pathInfo = tr.params?.path ? ` [${tr.params.path}]` : '';
+      console.log(`## ToolCall ${tr.name}${pathInfo} Result`);
+      console.log(tr.content.replace(/\s+/g, ' ').slice(0, 80));
     });
 
     try {
-      await run.toPromise();
+      await currentRun.toPromise();
     } catch (e: any) {
       if (e?.name === 'AbortError') {
         process.stdout.write('\n[aborted]\n');
       } else {
-        process.stdout.write(`\n[error: ${e.message}]\n`);
+        process.stderr.write(`\n[error: ${e?.stack ?? e?.message ?? e}]\n`);
       }
     } finally {
       currentRun = null;
     }
 
     process.stdout.write('\n\n');
-    await saveHistory(agent);
+    await persistHistory();
   }
+
+  let shuttingDown = false;
+  function shutdown(exitCode = 130) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    currentRun?.abort();
+    rl.close();
+    process.exit(exitCode);
+  }
+
+  process.on('SIGINT', () => shutdown());
 
   rl.on('line', async (line) => {
     const input = line.trim();
+
     if (input === '/quit') {
-      rl.close();
+      shutdown(0);
       return;
     }
+
     if (input === '/index') {
       if (!codeIndex) {
         process.stdout.write('Code search not initialized yet.\n');
@@ -115,12 +125,14 @@ async function main() {
       busy = true;
       codeIndex
         .indexProject((msg: string) => process.stdout.write(msg + '\n'))
-        .then(() => {
+        .catch((e: any) => process.stderr.write(`\n[index error: ${e?.stack ?? e?.message ?? e}]\n`))
+        .finally(() => {
           busy = false;
           rl.prompt();
         });
       return;
     }
+
     if (input === '/resume') {
       if (busy) {
         process.stdout.write('Busy, please wait.\n');
@@ -130,14 +142,13 @@ async function main() {
       const result = await loadHistory(agent);
       if (result.loaded) {
         process.stdout.write(`Resumed from history: ${result.messageCount} messages loaded.\n\n`);
-        rl.prompt();
-        return;
       } else {
         process.stdout.write('No saved history found. Start fresh, dude.\n');
-        rl.prompt();
-        return;
       }
+      rl.prompt();
+      return;
     }
+
     if (input === '/clear') {
       if (busy) {
         process.stdout.write('Busy, please wait.\n');
@@ -146,17 +157,18 @@ async function main() {
       }
       agent.messages = [];
       agent.readFiles.clear();
-      await saveHistory(agent);
+      await persistHistory();
       process.stdout.write('Cleared messages and read cache. Fresh start!\n\n');
       rl.prompt();
       return;
     }
+
     if (!input) {
       rl.prompt();
       return;
     }
 
-    process.stdout.write("\n");
+    process.stdout.write('\n');
 
     if (busy) {
       pending.push(input);
@@ -164,13 +176,17 @@ async function main() {
     }
 
     busy = true;
-    handleInput(input).then(async () => {
+    try {
+      await handleInput(input);
       while (pending.length) {
         await handleInput(pending.shift()!);
       }
+    } catch (e: any) {
+      process.stderr.write(`\n[unhandled error: ${e?.stack ?? e?.message ?? e}]\n`);
+    } finally {
       busy = false;
       rl.prompt();
-    });
+    }
   });
 }
 
