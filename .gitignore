@@ -3,3 +3,4 @@
 /.code-rag-index/
 /node_modules/
 /.doofy/
+.env

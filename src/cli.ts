@@ -14,6 +14,8 @@ async function main() {
   });
 
   const apiKey = process.env['OPENAI_API_KEY'];
+  const baseUrl = process.env['OPENAI_BASE_URL'];
+
   if (!apiKey) {
     console.error('OPENAI_API_KEY environment variable is required');
     process.exit(1);
@@ -21,10 +23,9 @@ async function main() {
 
   const api = new OpenAI({
     apiKey,
-    baseURL: 'http://ryzenrig:8080/v1', // process.env['OPENAI_BASE_URL']
+    baseURL: baseUrl,
   }) as any;
-  const model = ['Qwen3.6-35B-A3B', 'glm-5-turbo', 'gpt-5-mini'];
-
+  const model = ['Qwen3.6-35B-A3B', 'glm-5.2', 'glm-5-turbo', 'gpt-5-mini'];
   let codeIndex: CodeIndex | undefined;
   const agent = await createAgent({
     api,
