@@ -15,7 +15,7 @@ import {
   deleteFileTool,
   createListFilesTool,
   createTextSearchTool,
-  createSearchCodeTool,
+  createSemanticSearchTool,
   CodeIndex,
   buildFileTree,
 } from '../../lib/tools';
@@ -113,7 +113,7 @@ export async function createAgent(config: DevAgentConfig): Promise<Agent> {
         model: Array.isArray(config.model) ? config.model[0] : config.model,
       });
       await codeIndex.init();
-      agent.tools.push(createSearchCodeTool({ codeIndex }));
+      agent.tools.push(createSemanticSearchTool({ codeIndex }));
       config.onCodeIndexReady?.(codeIndex);
     })
     .catch((err) => {

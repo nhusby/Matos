@@ -1,12 +1,14 @@
 import type { Tool } from '../Agent';
 import type { CodeIndex } from './codeIndex';
 
-export interface SearchCodeConfig {
+export interface SemanticSearchConfig {
   codeIndex: CodeIndex;
 }
 
-export const createSearchCodeTool = (config: SearchCodeConfig): Tool => ({
-  name: 'SearchCode',
+export const createSemanticSearchTool = (
+  config: SemanticSearchConfig,
+): Tool => ({
+  name: 'SemanticSearch',
   description:
     'Semantic code search. Finds functions, methods, and classes by meaning, not just text match. Describe what you are looking for in natural language. Returns matching symbols with file paths, line numbers, descriptions, and source code. Use this when looking for existing code that does something specific, especially when you are not sure of the exact function or variable names.',
   params: {
@@ -19,7 +21,7 @@ export const createSearchCodeTool = (config: SearchCodeConfig): Tool => ({
       },
       topK: {
         type: 'number',
-        description: 'Maximum number of results to return. Default: 10.',
+        description: 'Maximum number of results to return. Default: 5.',
       },
       kind: {
         type: 'string',
@@ -38,7 +40,7 @@ export const createSearchCodeTool = (config: SearchCodeConfig): Tool => ({
     topK?: number;
     kind?: string;
   }) => {
-    let results = await config.codeIndex.search(query, topK ?? 10);
+    let results = await config.codeIndex.search(query, topK ?? 5);
 
     if (kind) {
       results = results.filter((r) => r.kind === kind);
