@@ -1,16 +1,27 @@
-import { createInterface, emitKeypressEvents } from 'readline';
+import 'dotenv/config';
 import OpenAI from 'openai';
 import { ToolPart } from './lib/Agent';
 import { Emitter } from './lib/Emitter';
 import { createAgent } from './agents/matos';
 import type { CodeIndex } from './lib/tools';
+import { MultiLineEditor } from './lib/MultiLineEditor';
 import { saveHistory, loadHistory } from './lib/HistoryManager.js';
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function main() {
+  // Clear the terminal and print splash art.
+  process.stdout.write('\x1b[2J\x1b[H');
+  const splash = readFileSync(join(__dirname, 'splash.txt'), 'utf-8');
+  console.log(splash);
+
   const THINKING_YELLOW = '\x1b[93m';
   const RESET = '\x1b[0m';
 
-  const rl = createInterface({
+  const editor = new MultiLineEditor({
     input: process.stdin,
     output: process.stdout,
     prompt: '> ',
@@ -19,8 +30,8 @@ async function main() {
   const apiKey = process.env['OPENAI_API_KEY'];
   const baseUrl = process.env['OPENAI_BASE_URL'];
 
-  if (!apiKey) {
-    console.error('OPENAI_API_KEY environment variable is required');
+  if (!apiKey && !baseUrl) {
+    console.error('Missing OPENAI_API_KEY and OPENAI_BASE_URL environment variables');
     process.exit(1);
   }
 
@@ -30,7 +41,7 @@ async function main() {
   }) as any;
   const model = [
     'Qwen3.6-35B-A3B',
-    // 'glm-5.2',
+    'glm-5.2',
     'glm-5-turbo',
     'gpt-5-mini'
   ];
@@ -40,26 +51,10 @@ async function main() {
     model,
     onCodeIndexReady: (ci) => {
       codeIndex = ci;
-      process.stdout.write('Code search ready.\n');
-      rl.prompt();
-    },
-    onCodeIndexError: (err) => {
-      process.stdout.write(`Code search unavailable: ${err.message}\n`);
-      rl.prompt();
     },
   });
-
-  process.stdout.write('Chat initialized. Type /quit to exit. Press ESC to abort.\n');
-  rl.prompt();
 
   let currentRun: Emitter | null = null;
-  emitKeypressEvents(process.stdin);
-  process.stdin.on('keypress', (_str: string, key: { name?: string } | undefined) => {
-    if (key?.name === 'escape' && currentRun) {
-      currentRun.abort();
-    }
-  });
-
   let busy = false;
   const pending: string[] = [];
 
@@ -78,7 +73,7 @@ async function main() {
       created: new Date(),
     });
 
-    currentRun.on('reasoning-start', () => process.stdout.write(THINKING_YELLOW + '<thinking>\n'));
+    currentRun.on('reasoning-start', () => process.stdout.write(THINKING_YELLOW + '\n<thinking>\n'));
     currentRun.on('reasoning', (chunk: string) => process.stdout.write(THINKING_YELLOW + chunk));
     currentRun.on('reasoning-finished', () => {
       process.stdout.write('\n</thinking>' + RESET + '\n\n');
@@ -86,8 +81,8 @@ async function main() {
     currentRun.on('content', (chunk: string) => process.stdout.write(chunk));
     currentRun.on('tool-result', (tr: ToolPart) => {
       const pathInfo = tr.params?.path ? ` [${tr.params.path}]` : '';
-      console.log(`## ToolCall ${tr.name}${pathInfo} Result`);
-      console.log(tr.content.replace(/\s+/g, ' ').slice(0, 80));
+      process.stdout.write(`\n## ToolCall ${tr.name}${pathInfo} Result:\n`);
+      process.stdout.write(tr.content.replace(/\s+/g, ' ').slice(0, 80));
     });
 
     try {
@@ -107,17 +102,40 @@ async function main() {
   }
 
   let shuttingDown = false;
-  function shutdown(exitCode = 130) {
+  async function shutdown(exitCode = 130) {
     if (shuttingDown) return;
     shuttingDown = true;
-    currentRun?.abort();
-    rl.close();
-    process.exit(exitCode);
+
+    process.stdin.pause();
+    editor.close();
+
+    const run = currentRun;
+    if (run) {
+      run.abort();
+      // Wait for in-flight HTTP streams to actually reject on abort.
+      await Promise.race([
+        run.toPromise().catch(() => {}),
+        new Promise((r) => setTimeout(r, 3000)),
+      ]);
+    }
+
+    // Let the event loop drain naturally so native backends (TLS,
+    // ONNX Runtime, etc.) can clean up their threads without racing
+    // a forced exit.  process.exit() is only a last-resort fallback.
+    process.exitCode = exitCode;
+    setTimeout(() => process.exit(exitCode), 2000).unref();
   }
 
+  editor.on('escape', () => {
+    if (currentRun) currentRun.abort();
+  });
+  editor.on('sigint', () => shutdown());
+  editor.on('close', () => shutdown(0));
   process.on('SIGINT', () => shutdown());
 
-  rl.on('line', async (line) => {
+  process.stdout.write('Type /quit to exit. Press ESC to abort.\n');
+
+  editor.on('line', async (line) => {
     const input = line.trim();
 
     if (input === '/quit') {
@@ -128,12 +146,12 @@ async function main() {
     if (input === '/index') {
       if (!codeIndex) {
         process.stdout.write('Code search not initialized yet.\n');
-        rl.prompt();
+        editor.prompt();
         return;
       }
       if (busy) {
         process.stdout.write('Busy, please wait.\n');
-        rl.prompt();
+        editor.prompt();
         return;
       }
       busy = true;
@@ -142,7 +160,7 @@ async function main() {
         .catch((e: any) => process.stderr.write(`\n[index error: ${e?.stack ?? e?.message ?? e}]\n`))
         .finally(() => {
           busy = false;
-          rl.prompt();
+          editor.prompt();
         });
       return;
     }
@@ -150,7 +168,7 @@ async function main() {
     if (input === '/resume') {
       if (busy) {
         process.stdout.write('Busy, please wait.\n');
-        rl.prompt();
+        editor.prompt();
         return;
       }
       const result = await loadHistory(agent);
@@ -159,26 +177,26 @@ async function main() {
       } else {
         process.stdout.write('No saved history found. Start fresh, dude.\n');
       }
-      rl.prompt();
+      editor.prompt();
       return;
     }
 
     if (input === '/clear') {
       if (busy) {
         process.stdout.write('Busy, please wait.\n');
-        rl.prompt();
+        editor.prompt();
         return;
       }
       agent.messages = [];
       agent.readFiles.clear();
       await persistHistory();
       process.stdout.write('Cleared messages and read cache. Fresh start!\n\n');
-      rl.prompt();
+      editor.prompt();
       return;
     }
 
     if (!input) {
-      rl.prompt();
+      editor.prompt();
       return;
     }
 
@@ -197,9 +215,11 @@ async function main() {
       process.stderr.write(`\n[unhandled error: ${e?.stack ?? e?.message ?? e}]\n`);
     } finally {
       busy = false;
-      rl.prompt();
+      editor.prompt();
     }
   });
+
+  editor.prompt();
 }
 
 main().catch(console.error);

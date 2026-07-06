@@ -1,6 +1,11 @@
 import OpenAI from 'openai';
 import { TransformersEmbeddings } from 'vectra';
+import { env } from '@huggingface/transformers';
 import { CodeIndex } from './lib/tools';
+
+// Force single-threaded ONNX execution to prevent native mutex crashes
+// during shutdown.
+env.backends.onnx.wasm.numThreads = 1;
 
 async function main() {
   const apiKey = process.env['OPENAI_API_KEY'];
@@ -21,7 +26,7 @@ async function main() {
     model: 'Xenova/all-MiniLM-L6-v2',
     maxTokens: 512,
     device: 'auto',
-    dtype: 'fp16',
+    dtype: 'fp32',
   });
 
   const codeIndex = new CodeIndex({

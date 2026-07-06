@@ -1,6 +1,7 @@
 import ts from 'typescript';
 import { resolve } from 'path';
 import { TransformersEmbeddings } from 'vectra';
+import { env } from '@huggingface/transformers';
 import { Agent, type Api, type Message } from '../../lib/Agent.js';
 import { pruneContext } from '../../lib/ContextPruner.js';
 import { ConversationLogger } from '../../lib/ConversationLogger.js';
@@ -19,6 +20,11 @@ import {
   buildFileTree,
 } from '../../lib/tools';
 import { systemPrompt } from './system-prompt.js';
+
+// Force single-threaded ONNX execution.  Multi-threaded ORT spawns
+// native pthreads that race with process.exit() during shutdown,
+// causing "mutex lock failed: Invalid argument" crashes.
+env.backends.onnx.wasm.numThreads = 1;
 
 export interface DevAgentConfig {
   api: Api;
@@ -93,7 +99,7 @@ export async function createAgent(config: DevAgentConfig): Promise<Agent> {
     model: 'Xenova/all-MiniLM-L6-v2',
     maxTokens: 512,
     device: 'auto',
-    dtype: 'fp16',
+    dtype: 'fp32',
   })
     .then(async (embeddings) => {
       const codeIndex = new CodeIndex({
