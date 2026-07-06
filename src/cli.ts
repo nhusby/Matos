@@ -7,6 +7,9 @@ import type { CodeIndex } from './lib/tools';
 import { saveHistory, loadHistory } from './lib/HistoryManager.js';
 
 async function main() {
+  const THINKING_YELLOW = '\x1b[93m';
+  const RESET = '\x1b[0m';
+
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -75,6 +78,11 @@ async function main() {
       created: new Date(),
     });
 
+    currentRun.on('reasoning-start', () => process.stdout.write(THINKING_YELLOW + '<thinking>\n'));
+    currentRun.on('reasoning', (chunk: string) => process.stdout.write(THINKING_YELLOW + chunk));
+    currentRun.on('reasoning-finished', () => {
+      process.stdout.write('\n</thinking>' + RESET + '\n\n');
+    });
     currentRun.on('content', (chunk: string) => process.stdout.write(chunk));
     currentRun.on('tool-result', (tr: ToolPart) => {
       const pathInfo = tr.params?.path ? ` [${tr.params.path}]` : '';
@@ -173,8 +181,6 @@ async function main() {
       rl.prompt();
       return;
     }
-
-    process.stdout.write('\n');
 
     if (busy) {
       pending.push(input);
