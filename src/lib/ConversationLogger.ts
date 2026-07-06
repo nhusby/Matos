@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { v7 } from 'uuid';
 import { appendFileSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { resolve } from 'path';
@@ -42,7 +42,7 @@ export class ConversationLogger {
   private readonly logFile: string;
 
   constructor() {
-    this.conversationId = randomUUID();
+    this.conversationId = v7();
     mkdirSync(LOG_DIR, { recursive: true });
     this.logFile = resolve(LOG_DIR, `${this.conversationId}.jsonl`);
   }
