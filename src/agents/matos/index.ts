@@ -3,6 +3,7 @@ import { resolve } from 'path';
 import { TransformersEmbeddings } from 'vectra';
 import { Agent, type Api, type Message } from '../../lib/Agent.js';
 import { pruneContext } from '../../lib/ContextPruner.js';
+import { ConversationLogger } from '../../lib/ConversationLogger.js';
 import {
   readFileTool,
   writeFileTool,
@@ -43,6 +44,8 @@ export async function createAgent(config: DevAgentConfig): Promise<Agent> {
     ],
     systemPrompt,
   }).init();
+
+  new ConversationLogger().attach(agent);
 
   agent.on('send-message', async () => {
     for (const path of agent.readFiles) {
