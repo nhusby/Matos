@@ -25,7 +25,12 @@ async function main() {
     apiKey,
     baseURL: baseUrl,
   }) as any;
-  const model = ['Qwen3.6-35B-A3B', 'glm-5.2', 'glm-5-turbo', 'gpt-5-mini'];
+  const model = [
+    'Qwen3.6-35B-A3B',
+    // 'glm-5.2',
+    'glm-5-turbo',
+    'gpt-5-mini'
+  ];
   let codeIndex: CodeIndex | undefined;
   const agent = await createAgent({
     api,
