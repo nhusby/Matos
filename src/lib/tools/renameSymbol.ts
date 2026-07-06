@@ -101,7 +101,9 @@ export const renameSymbolTool: Tool = {
           content.slice(0, start) + newName + content.slice(start + length);
       }
       await writeFile(fileName, content, 'utf-8');
-      results.push(`${locs.length} occurrence(s) in ${relative(process.cwd(), fileName)}`);
+      results.push(
+        `${locs.length} occurrence(s) in ${relative(process.cwd(), fileName)}`,
+      );
     }
 
     return `Renamed to "${newName}" across ${byFile.size} file(s):\n${results.join('\n')}`;

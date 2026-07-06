@@ -38,7 +38,11 @@ export interface ProcessedMessage {
   content?: string;
   name?: string;
   reasoning_content?: string;
-  tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
+  tool_calls?: {
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }[];
   tool_call_id?: string;
 }
 export interface Message {
@@ -127,14 +131,16 @@ export class Agent extends Emitter<AgentEvents> {
   }
 
   async init() {
-    await Promise.all(this.apis.map(async (api) => {
-      api._models = [];
-      for await (const page of (await api.models.list()).iterPages()) {
-        for (const model of page.getPaginatedItems()) {
-          api._models.push(model.id);
+    await Promise.all(
+      this.apis.map(async (api) => {
+        api._models = [];
+        for await (const page of (await api.models.list()).iterPages()) {
+          for (const model of page.getPaginatedItems()) {
+            api._models.push(model.id);
+          }
         }
-      }
-    }));
+      }),
+    );
 
     return this;
   }
@@ -148,7 +154,10 @@ export class Agent extends Emitter<AgentEvents> {
     return emitter;
   }
 
-  async #beginSend(message: Message, emitter: Emitter<MessageEvents>): Promise<void> {
+  async #beginSend(
+    message: Message,
+    emitter: Emitter<MessageEvents>,
+  ): Promise<void> {
     message = await this.emit('send-message', message);
     this.messages.push(message);
 
@@ -237,7 +246,8 @@ export class Agent extends Emitter<AgentEvents> {
               response.thinking = true;
               await emitter.emit('reasoning-start');
             }
-            part.reasoningContent = (part.reasoningContent ?? '') + choice.delta.reasoning_content;
+            part.reasoningContent =
+              (part.reasoningContent ?? '') + choice.delta.reasoning_content;
             await emitter.emit('reasoning', choice.delta.reasoning_content);
           } else if (choice.delta.content) {
             if (response.thinking) {
@@ -374,7 +384,10 @@ function snake_case(key: string) {
 function toOpenAiMessages(messages: Message[]): ProcessedMessage[] {
   return messages
     .flatMap((msg) => (msg.parts ?? [msg]) as any)
-    .filter((msg) => !(msg.role === 'assistant' && !msg.content && !msg.toolCalls?.length))
+    .filter(
+      (msg) =>
+        !(msg.role === 'assistant' && !msg.content && !msg.toolCalls?.length),
+    )
     .map((part: AgentPart | ToolPart | Message) => {
       const obj: any = {};
       for (const key of [

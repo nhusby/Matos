@@ -21,7 +21,10 @@ function getLineInfo(sf: ts.SourceFile, pos: number): number {
   return sf.getLineAndCharacterOfPosition(pos).line + 1;
 }
 
-function extractFromClass(classDecl: ts.ClassDeclaration, sf: ts.SourceFile): ExtractedSymbol[] {
+function extractFromClass(
+  classDecl: ts.ClassDeclaration,
+  sf: ts.SourceFile,
+): ExtractedSymbol[] {
   const symbols: ExtractedSymbol[] = [];
   const className = classDecl.name?.text ?? '<anonymous>';
 
@@ -38,7 +41,10 @@ function extractFromClass(classDecl: ts.ClassDeclaration, sf: ts.SourceFile): Ex
 
   for (const member of classDecl.members) {
     if (!ts.isMethodDeclaration(member)) continue;
-    const methodName = member.name && ts.isIdentifier(member.name) ? member.name.text : '<anonymous>';
+    const methodName =
+      member.name && ts.isIdentifier(member.name)
+        ? member.name.text
+        : '<anonymous>';
     if (methodName === 'constructor') continue;
 
     symbols.push({
@@ -55,8 +61,16 @@ function extractFromClass(classDecl: ts.ClassDeclaration, sf: ts.SourceFile): Ex
   return symbols;
 }
 
-export function extractSymbols(filePath: string, content: string): ExtractedSymbol[] {
-  const sf = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true);
+export function extractSymbols(
+  filePath: string,
+  content: string,
+): ExtractedSymbol[] {
+  const sf = ts.createSourceFile(
+    filePath,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const symbols: ExtractedSymbol[] = [];
 
   for (const node of sf.statements) {
@@ -83,10 +97,7 @@ export function extractSymbols(filePath: string, content: string): ExtractedSymb
         const init = decl.initializer;
         if (!init) continue;
 
-        if (
-          ts.isArrowFunction(init) ||
-          ts.isFunctionExpression(init)
-        ) {
+        if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
           symbols.push({
             kind: 'function',
             name: decl.name.text,

@@ -7,7 +7,10 @@ import type { Tool } from '../Agent';
 
 const JS_TS_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx']);
 
-async function readIgnoreFile(dir: string, filename: string): Promise<string[]> {
+async function readIgnoreFile(
+  dir: string,
+  filename: string,
+): Promise<string[]> {
   try {
     return (await readFile(join(dir, filename), 'utf-8'))
       .split('\n')
@@ -18,7 +21,12 @@ async function readIgnoreFile(dir: string, filename: string): Promise<string[]> 
 }
 
 function extractExports(filePath: string, content: string): string[] {
-  const sf = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true);
+  const sf = ts.createSourceFile(
+    filePath,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const names: string[] = [];
 
   for (const node of sf.statements) {
@@ -37,7 +45,8 @@ function extractExports(filePath: string, content: string): string[] {
     const modifiers = ts.canHaveModifiers(node)
       ? Array.from(ts.getModifiers(node) ?? [])
       : [];
-    if (!modifiers.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) continue;
+    if (!modifiers.some((m) => m.kind === ts.SyntaxKind.ExportKeyword))
+      continue;
     const isDefault = modifiers.some(
       (m) => m.kind === ts.SyntaxKind.DefaultKeyword,
     );

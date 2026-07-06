@@ -20,24 +20,29 @@ export const createTextSearchTool = (config: SearchFilesConfig = {}): Tool => ({
       },
       path: {
         type: 'string',
-        description: 'Directory or file path to search in. Defaults to current working directory.',
+        description:
+          'Directory or file path to search in. Defaults to current working directory.',
       },
       include: {
         type: 'string',
-        description: 'Comma-separated file extensions to include, e.g. "*.ts,*.tsx". Defaults to all files.',
+        description:
+          'Comma-separated file extensions to include, e.g. "*.ts,*.tsx". Defaults to all files.',
       },
       excludeDirs: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Directory names to skip, e.g. ["node_modules", ".git"]. Defaults to ["node_modules", ".git", "dist", "build"].',
+        description:
+          'Directory names to skip, e.g. ["node_modules", ".git"]. Defaults to ["node_modules", ".git", "dist", "build"].',
       },
       regex: {
         type: 'boolean',
-        description: 'Set to true to treat the pattern as a regular expression.',
+        description:
+          'Set to true to treat the pattern as a regular expression.',
       },
       caseSensitive: {
         type: 'boolean',
-        description: 'Set to true for case-sensitive search. Defaults to false (case-insensitive).',
+        description:
+          'Set to true for case-sensitive search. Defaults to false (case-insensitive).',
       },
     },
     required: ['pattern'],

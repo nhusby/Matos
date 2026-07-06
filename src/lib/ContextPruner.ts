@@ -1,4 +1,11 @@
-import type { Api, Message, Tool, AgentPart, SystemPart, ToolPart } from './Agent.js';
+import type {
+  Api,
+  Message,
+  Tool,
+  AgentPart,
+  SystemPart,
+  ToolPart,
+} from './Agent.js';
 import type OpenAI from 'openai';
 
 export interface SummarizeContext {
@@ -46,7 +53,7 @@ export async function pruneContext(
       if (!config?.ttl || age < config.ttl) continue;
 
       // Extract file path for readFile/readFileWithContext tools
-      if ((part.name === 'ReadFile' || part.name === 'ReadFileWithContext')) {
+      if (part.name === 'ReadFile' || part.name === 'ReadFileWithContext') {
         const tc = findToolCall(part.toolCallId, messages);
         if (tc?.params?.path) {
           prunedFiles.add(tc.params.path);
@@ -54,11 +61,7 @@ export async function pruneContext(
       }
 
       if (config.summarize && summarizeCtx) {
-        const summary = await summarizeToolPart(
-          part,
-          messages,
-          summarizeCtx,
-        );
+        const summary = await summarizeToolPart(part, messages, summarizeCtx);
         removeToolCallEntry(part.toolCallId, msg.parts);
         msg.parts[i] = { role: 'system', content: summary } as SystemPart;
       } else {
@@ -92,15 +95,17 @@ async function summarizeToolPart(
   const call = findToolCall(toolPart.toolCallId, messages);
   const args = call ? JSON.stringify(call.params) : '';
 
-  const prefix = messages.map((m) => ({
-    role: m.role,
-    content: m.content || undefined,
-  })).filter((m) => m.content);
+  const prefix = messages
+    .map((m) => ({
+      role: m.role,
+      content: m.content || undefined,
+    }))
+    .filter((m) => m.content);
 
   const response = await ctx.api.chat.completions.create({
     model: ctx.model,
     messages: [
-      ...prefix as OpenAI.ChatCompletionMessageParam[],
+      ...(prefix as OpenAI.ChatCompletionMessageParam[]),
       {
         role: 'user',
         content: `Summarize the following tool call and its result in 1-2 sentences, preserving key information that would be needed for future context. Focus on what was learned, not the mechanics of the call.\n\nTool: ${toolPart.name}\nArguments: ${args}\nResult: ${toolPart.content}`,
@@ -111,7 +116,10 @@ async function summarizeToolPart(
   return response.choices[0]!.message.content!;
 }
 
-function removeToolCallEntry(toolCallId: string, parts: (AgentPart | ToolPart | SystemPart)[]) {
+function removeToolCallEntry(
+  toolCallId: string,
+  parts: (AgentPart | ToolPart | SystemPart)[],
+) {
   for (const part of parts) {
     if (part.role === 'assistant' && part.toolCalls) {
       const idx = part.toolCalls.findIndex((tc) => tc.id === toolCallId);

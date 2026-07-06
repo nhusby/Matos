@@ -8,7 +8,13 @@ import { extractSymbols } from './symbolExtractor';
 import type { ExtractedSymbol } from './symbolExtractor';
 
 const JS_TS_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx']);
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.code-rag-index']);
+const SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  '.code-rag-index',
+]);
 
 export interface CodeIndexConfig {
   projectRoot: string;
@@ -133,8 +139,13 @@ export class CodeIndex {
     }
     stats.totalSymbols = allSymbols.length;
 
-    onProgress?.(`Generating descriptions for ${allSymbols.length} symbol(s)...`);
-    const descriptions = await this.generateDescriptions(allSymbols, onProgress);
+    onProgress?.(
+      `Generating descriptions for ${allSymbols.length} symbol(s)...`,
+    );
+    const descriptions = await this.generateDescriptions(
+      allSymbols,
+      onProgress,
+    );
 
     onProgress?.(`Embedding ${descriptions.length} description(s)...`);
     const embeddingResponse = await this.config.embeddings.createEmbeddings(
@@ -175,7 +186,10 @@ export class CodeIndex {
     }
     await this.index.endUpdate();
 
-    await writeFile(this.hashCachePath, JSON.stringify(this.hashCache, null, 2));
+    await writeFile(
+      this.hashCachePath,
+      JSON.stringify(this.hashCache, null, 2),
+    );
 
     onProgress?.(
       `Done. ${stats.addedSymbols} symbols indexed across ${stats.totalFiles} files.`,
@@ -225,10 +239,15 @@ export class CodeIndex {
             },
           ],
         });
-        const description = response.choices[0]?.message?.content?.trim() ?? `${sym.kind} ${sym.name}`;
+        const description =
+          response.choices[0]?.message?.content?.trim() ??
+          `${sym.kind} ${sym.name}`;
         results.push({ name: sym.name, description });
       } catch {
-        results.push({ name: sym.name, description: `${sym.kind} ${sym.name}` });
+        results.push({
+          name: sym.name,
+          description: `${sym.kind} ${sym.name}`,
+        });
       }
     }
 
@@ -250,7 +269,9 @@ export class CodeIndex {
         if (SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
         results.push(...(await this.walkDir(fullPath)));
       } else if (entry.isFile()) {
-        const ext = entry.name.includes('.') ? '.' + entry.name.split('.').pop()! : '';
+        const ext = entry.name.includes('.')
+          ? '.' + entry.name.split('.').pop()!
+          : '';
         if (JS_TS_EXTS.has(ext)) {
           results.push(fullPath);
         }

@@ -40,18 +40,23 @@ export class Emitter<T = unknown> extends EventEmitter2 {
    * Arg is optional for void events.
    */
   // @ts-expect-error - intentionally returns Promise<T> instead of boolean
-  emit<K extends keyof T>(...args: T[K] extends void ? [event: K] : [event: K, arg: T[K]]): Promise<T[K]>;
+  emit<K extends keyof T>(
+    ...args: T[K] extends void ? [event: K] : [event: K, arg: T[K]]
+  ): Promise<T[K]>;
   // @ts-expect-error - intentionally returns Promise<T> instead of boolean
   emit(event: string | symbol, arg?: any): Promise<any>;
   // @ts-expect-error - intentionally returns Promise<T> instead of boolean
   async emit(event: string | symbol, arg?: any): Promise<any> {
-    const all = (this as any)._all as Array<(event: any, arg: any) => any> | undefined;
+    const all = (this as any)._all as
+      Array<(event: any, arg: any) => any> | undefined;
     if (all) {
       for (const fn of all) {
         await fn(event, arg);
       }
     }
-    const ls = ((this.listeners(event) as any[]) || []).slice() as Array<(arg: any) => any>;
+    const ls = ((this.listeners(event) as any[]) || []).slice() as Array<
+      (arg: any) => any
+    >;
     let value = arg;
     for (const listener of ls) {
       const result = await listener(value);

@@ -11,12 +11,24 @@ export const renameFileTool: Tool = {
   params: {
     type: 'object',
     properties: {
-      oldPath: { type: 'string', description: 'Current absolute or relative file path.' },
-      newPath: { type: 'string', description: 'New absolute or relative file path.' },
+      oldPath: {
+        type: 'string',
+        description: 'Current absolute or relative file path.',
+      },
+      newPath: {
+        type: 'string',
+        description: 'New absolute or relative file path.',
+      },
     },
     required: ['oldPath', 'newPath'],
   },
-  callback: async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
+  callback: async ({
+    oldPath,
+    newPath,
+  }: {
+    oldPath: string;
+    newPath: string;
+  }) => {
     const resolvedOld = resolve(oldPath);
     const resolvedNew = resolve(newPath);
 
@@ -29,14 +41,17 @@ export const renameFileTool: Tool = {
 
     const oldStat = await stat(resolvedOld).catch(() => null);
     if (!oldStat) return `Error: ${oldPath} does not exist.`;
-    if (oldStat.isDirectory()) return `Error: ${oldPath} is a directory. This tool only renames files.`;
+    if (oldStat.isDirectory())
+      return `Error: ${oldPath} is a directory. This tool only renames files.`;
 
     const newStat = await stat(resolvedNew).catch(() => null);
     if (newStat) return `Error: ${newPath} already exists.`;
 
     // Find importers before renaming (non-blocking — errors here shouldn't prevent renaming)
     let importers: string[] = [];
-    try { importers = await findImporters(resolvedOld); } catch {}
+    try {
+      importers = await findImporters(resolvedOld);
+    } catch {}
 
     await rename(resolvedOld, resolvedNew);
 

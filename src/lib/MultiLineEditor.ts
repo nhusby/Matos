@@ -122,7 +122,8 @@ export class MultiLineEditor extends EventEmitter {
 
   /** Screen rows occupied by logical line *index* (accounting for wrap). */
   private lineScreenRows(index: number): number {
-    const prefixLen = index === 0 ? this.promptStr.length : this.continuationStr.length;
+    const prefixLen =
+      index === 0 ? this.promptStr.length : this.continuationStr.length;
     const contentLen = this.lines[index].length;
     const w = this.termWidth();
     const firstRow = w - prefixLen;
@@ -165,7 +166,8 @@ export class MultiLineEditor extends EventEmitter {
     for (let i = 0; i < this.row; i++) {
       targetRow += this.lineScreenRows(i);
     }
-    const prefixLen = this.row === 0 ? this.promptStr.length : this.continuationStr.length;
+    const prefixLen =
+      this.row === 0 ? this.promptStr.length : this.continuationStr.length;
     const cursorPos = prefixLen + this.col;
     const w = this.termWidth();
     targetRow += Math.floor(cursorPos / w);

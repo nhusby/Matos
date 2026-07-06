@@ -71,7 +71,11 @@ export async function createDevAgent(config: DevAgentConfig): Promise<Agent> {
     const fileTree = await buildFileTree();
     return [
       ...messages.slice(0, 1),
-      { role: 'system', content: `Current working directory:\n ${fileTree}`, created: new Date() },
+      {
+        role: 'system',
+        content: `Current working directory:\n ${fileTree}`,
+        created: new Date(),
+      },
       ...messages.slice(1),
     ];
   });

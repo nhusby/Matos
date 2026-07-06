@@ -9,7 +9,8 @@ export interface ListFilesConfig {
 
 export const createListFilesTool = (config: ListFilesConfig = {}): Tool => ({
   name: 'ListFiles',
-  description: 'List files and directories at the given path. Directories have a trailing slash.',
+  description:
+    'List files and directories at the given path. Directories have a trailing slash.',
   ttl: 3,
   params: {
     type: 'object',
@@ -21,7 +22,9 @@ export const createListFilesTool = (config: ListFilesConfig = {}): Tool => ({
     },
   },
   callback: async ({ path: dirPath }: { path?: string }) => {
-    const expanded = dirPath?.startsWith('~') ? dirPath.replace('~', homedir()) : dirPath;
+    const expanded = dirPath?.startsWith('~')
+      ? dirPath.replace('~', homedir())
+      : dirPath;
     const resolved = resolve(expanded ?? process.cwd());
     if (!config.bypassCwd && !resolved.startsWith(process.cwd())) {
       return 'Error: path is outside the current working directory.';

@@ -11,7 +11,10 @@ export const deleteFileTool: Tool = {
   params: {
     type: 'object',
     properties: {
-      path: { type: 'string', description: 'Absolute or relative file path to delete.' },
+      path: {
+        type: 'string',
+        description: 'Absolute or relative file path to delete.',
+      },
     },
     required: ['path'],
   },
@@ -23,11 +26,14 @@ export const deleteFileTool: Tool = {
 
     const fileStat = await stat(resolved).catch(() => null);
     if (!fileStat) return `Error: ${path} does not exist.`;
-    if (fileStat.isDirectory()) return `Error: ${path} is a directory. Use a different approach to delete directories.`;
+    if (fileStat.isDirectory())
+      return `Error: ${path} is a directory. Use a different approach to delete directories.`;
 
     // Find importers before deleting (non-blocking — errors here shouldn't prevent deletion)
     let importers: string[] = [];
-    try { importers = await findImporters(resolved); } catch {}
+    try {
+      importers = await findImporters(resolved);
+    } catch {}
 
     await unlink(resolved);
     const relPath = relative(process.cwd(), resolved);

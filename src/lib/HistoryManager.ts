@@ -10,7 +10,15 @@ function serializeMessage(msg: any): any {
     const serialized: Record<string, any> = {};
     for (const [key, value] of Object.entries(part)) {
       // Skip Promise objects and undefined values
-      if (value === undefined || typeof value === 'object' && value !== null && (typeof (value as any).then === 'function' || 'result' in part && (value as any).constructor?.name === 'Promise')) continue;
+      if (
+        value === undefined ||
+        (typeof value === 'object' &&
+          value !== null &&
+          (typeof (value as any).then === 'function' ||
+            ('result' in part &&
+              (value as any).constructor?.name === 'Promise')))
+      )
+        continue;
       serialized[key] = value;
     }
     return serialized;
@@ -19,11 +27,13 @@ function serializeMessage(msg: any): any {
   return {
     role: msg.role,
     name: msg.name,
-    content: typeof msg.content === 'string' ? msg.content : (msg.content ?? ''),
+    content:
+      typeof msg.content === 'string' ? msg.content : (msg.content ?? ''),
     parts,
     thinking: msg.thinking,
     loading: msg.loading,
-    created: msg.created instanceof Date ? msg.created.toISOString() : msg.created,
+    created:
+      msg.created instanceof Date ? msg.created.toISOString() : msg.created,
   };
 }
 
@@ -61,7 +71,9 @@ export async function saveHistory(agent: Agent): Promise<void> {
   writeFileSync(HISTORY_FILE, JSON.stringify(snapshot, null, 2));
 }
 
-export async function loadHistory(agent: Agent): Promise<{ loaded: boolean; messageCount: number }> {
+export async function loadHistory(
+  agent: Agent,
+): Promise<{ loaded: boolean; messageCount: number }> {
   if (!existsSync(HISTORY_FILE)) {
     return { loaded: false, messageCount: 0 };
   }

@@ -31,7 +31,9 @@ async function main() {
   const baseUrl = process.env['OPENAI_BASE_URL'];
 
   if (!apiKey && !baseUrl) {
-    console.error('Missing OPENAI_API_KEY and OPENAI_BASE_URL environment variables');
+    console.error(
+      'Missing OPENAI_API_KEY and OPENAI_BASE_URL environment variables',
+    );
     process.exit(1);
   }
 
@@ -39,12 +41,7 @@ async function main() {
     apiKey,
     baseURL: baseUrl,
   }) as any;
-  const model = [
-    'Qwen3.6-35B-A3B',
-    'glm-5.2',
-    'glm-5-turbo',
-    'gpt-5-mini'
-  ];
+  const model = ['Qwen3.6-35B-A3B', 'glm-5.2', 'glm-5-turbo', 'gpt-5-mini'];
   let codeIndex: CodeIndex | undefined;
   const agent = await createAgent({
     api,
@@ -73,8 +70,12 @@ async function main() {
       created: new Date(),
     });
 
-    currentRun.on('reasoning-start', () => process.stdout.write(THINKING_YELLOW + '\n<thinking>\n'));
-    currentRun.on('reasoning', (chunk: string) => process.stdout.write(THINKING_YELLOW + chunk));
+    currentRun.on('reasoning-start', () =>
+      process.stdout.write(THINKING_YELLOW + '\n<thinking>\n'),
+    );
+    currentRun.on('reasoning', (chunk: string) =>
+      process.stdout.write(THINKING_YELLOW + chunk),
+    );
     currentRun.on('reasoning-finished', () => {
       process.stdout.write('\n</thinking>' + RESET + '\n\n');
     });
@@ -157,7 +158,11 @@ async function main() {
       busy = true;
       codeIndex
         .indexProject((msg: string) => process.stdout.write(msg + '\n'))
-        .catch((e: any) => process.stderr.write(`\n[index error: ${e?.stack ?? e?.message ?? e}]\n`))
+        .catch((e: any) =>
+          process.stderr.write(
+            `\n[index error: ${e?.stack ?? e?.message ?? e}]\n`,
+          ),
+        )
         .finally(() => {
           busy = false;
           editor.prompt();
@@ -173,7 +178,9 @@ async function main() {
       }
       const result = await loadHistory(agent);
       if (result.loaded) {
-        process.stdout.write(`Resumed from history: ${result.messageCount} messages loaded.\n\n`);
+        process.stdout.write(
+          `Resumed from history: ${result.messageCount} messages loaded.\n\n`,
+        );
       } else {
         process.stdout.write('No saved history found. Start fresh, dude.\n');
       }
@@ -212,7 +219,9 @@ async function main() {
         await handleInput(pending.shift()!);
       }
     } catch (e: any) {
-      process.stderr.write(`\n[unhandled error: ${e?.stack ?? e?.message ?? e}]\n`);
+      process.stderr.write(
+        `\n[unhandled error: ${e?.stack ?? e?.message ?? e}]\n`,
+      );
     } finally {
       busy = false;
       editor.prompt();

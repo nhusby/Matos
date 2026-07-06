@@ -40,8 +40,12 @@ async function main() {
 
   const stats = await codeIndex.indexProject((msg) => console.log(msg));
   console.log('\nIndexing complete:');
-  console.log(`  Files: ${stats.totalFiles} (${stats.newFiles} new, ${stats.changedFiles} changed, ${stats.deletedFiles} deleted)`);
-  console.log(`  Symbols: ${stats.addedSymbols} added, ${stats.removedSymbols} removed`);
+  console.log(
+    `  Files: ${stats.totalFiles} (${stats.newFiles} new, ${stats.changedFiles} changed, ${stats.deletedFiles} deleted)`,
+  );
+  console.log(
+    `  Symbols: ${stats.addedSymbols} added, ${stats.removedSymbols} removed`,
+  );
 }
 
 main().catch(console.error);
