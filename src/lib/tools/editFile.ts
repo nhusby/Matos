@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'fs/promises';
 import { resolve } from 'path';
 import type { Tool } from '../Agent';
+import { lspManager } from '../lsp/manager.js';
 
 export const editFileTool: Tool = {
   name: 'EditFile',
@@ -31,7 +32,9 @@ export const editFileTool: Tool = {
     if (count > 1)
       return `Error: old_string is not unique in ${path} (found ${count} matches)`;
 
-    await writeFile(resolved, content.replace(old_string, new_string), 'utf-8');
+    const newContent = content.replace(old_string, new_string);
+    await writeFile(resolved, newContent, 'utf-8');
+    await lspManager.notifyWrote(resolved, newContent);
     return `Successfully edited ${path}`;
   },
 };

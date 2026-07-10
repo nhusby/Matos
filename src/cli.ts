@@ -6,6 +6,7 @@ import { createAgent } from './agents/matos';
 import type { CodeIndex } from './lib/tools';
 import { MultiLineEditor } from './lib/MultiLineEditor';
 import { saveHistory, loadHistory } from './lib/HistoryManager.js';
+import { lspManager } from './lib/lsp/manager.js';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -50,6 +51,10 @@ async function main() {
       codeIndex = ci;
     },
   });
+
+  lspManager.startDetected(process.cwd()).catch((e) =>
+    process.stderr.write(`[lsp] startup error: ${e?.message ?? e}\n`),
+  );
 
   let currentRun: Emitter | null = null;
   let busy = false;
@@ -106,6 +111,15 @@ async function main() {
   async function shutdown(exitCode = 130) {
     if (shuttingDown) return;
     shuttingDown = true;
+
+    try {
+      await Promise.race([
+        lspManager.shutdownAll(),
+        new Promise((r) => setTimeout(r, 3000)),
+      ]);
+    } catch (e: any) {
+      process.stderr.write(`[lsp] shutdown error: ${e?.message ?? e}\n`);
+    }
 
     process.stdin.pause();
     editor.close();

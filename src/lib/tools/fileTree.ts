@@ -2,10 +2,9 @@ import { readdir, readFile } from 'fs/promises';
 import { resolve, relative, extname, join } from 'path';
 import { homedir } from 'os';
 import ignore from 'ignore';
-import ts from 'typescript';
+import { extractExports, type ExportInfo } from '../parsers/extractors.js';
+import { languageForPath } from '../parsers/languages.js';
 import type { Tool } from '../Agent';
-
-const JS_TS_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx']);
 
 async function readIgnoreFile(
   dir: string,
@@ -20,53 +19,8 @@ async function readIgnoreFile(
   }
 }
 
-function extractExports(filePath: string, content: string): string[] {
-  const sf = ts.createSourceFile(
-    filePath,
-    content,
-    ts.ScriptTarget.Latest,
-    true,
-  );
-  const names: string[] = [];
-
-  for (const node of sf.statements) {
-    if (ts.isExportDeclaration(node)) {
-      if (node.exportClause && ts.isNamedExports(node.exportClause)) {
-        for (const el of node.exportClause.elements) names.push(el.name.text);
-      }
-      continue;
-    }
-
-    if (ts.isExportAssignment(node) && !node.isExportEquals) {
-      names.push('default');
-      continue;
-    }
-
-    const modifiers = ts.canHaveModifiers(node)
-      ? Array.from(ts.getModifiers(node) ?? [])
-      : [];
-    if (!modifiers.some((m) => m.kind === ts.SyntaxKind.ExportKeyword))
-      continue;
-    const isDefault = modifiers.some(
-      (m) => m.kind === ts.SyntaxKind.DefaultKeyword,
-    );
-
-    if (ts.isVariableStatement(node)) {
-      for (const d of node.declarationList.declarations) {
-        if (ts.isIdentifier(d.name)) names.push(d.name.text);
-      }
-    } else if (
-      'name' in node &&
-      node.name &&
-      ts.isIdentifier(node.name as ts.Node)
-    ) {
-      names.push((node.name as ts.Identifier).text);
-    } else if (isDefault) {
-      names.push('default');
-    }
-  }
-
-  return names;
+function extractExportNames(filePath: string, content: string): string[] {
+  return extractExports(filePath, content).map((e: ExportInfo) => e.name);
 }
 
 interface IgnoreCtx {
@@ -133,11 +87,11 @@ async function walkTree(
       const subLines = await walkTree(join(dir, entry.name), root, childCtx);
       lines.push(...subLines.map((l) => `  ${l}`));
     } else {
-      const ext = extname(entry.name);
-      if (JS_TS_EXTS.has(ext)) {
+      const lang = languageForPath(entry.name);
+      if (lang) {
         try {
           const content = await readFile(join(dir, entry.name), 'utf-8');
-          const exports = extractExports(entry.name, content);
+          const exports = extractExportNames(entry.name, content);
           lines.push(
             exports.length
               ? `- ${entry.name} - exports: ${exports.join(', ')}`
@@ -173,7 +127,7 @@ export function createFileTreeTool(): Tool {
   return {
     name: 'FileTree',
     description:
-      'Get a recursive markdown tree of the file structure. TS/JS files include their exports.',
+      'Get a recursive markdown tree of the file structure. Supported source files (TS/JS/Go/Python/Perl) include their top-level declarations.',
     params: {
       type: 'object',
       properties: {

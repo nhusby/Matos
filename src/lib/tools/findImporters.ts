@@ -1,30 +1,35 @@
 import { readdir, readFile, stat } from 'fs/promises';
-import { resolve, join, relative, basename } from 'path';
+import { resolve, join, relative, basename, extname } from 'path';
+import { languageForPath } from '../parsers/languages.js';
+import { scanImports } from '../parsers/extractors.js';
 
-const TS_JS_EXTENSIONS = new Set([
-  '.ts',
-  '.tsx',
-  '.js',
-  '.jsx',
-  '.mjs',
-  '.cjs',
-]);
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build']);
 
-export async function findImporters(filePath: string): Promise<string[]> {
+function fileStem(fileName: string): string {
+  const ext = extname(fileName);
+  return ext ? fileName.slice(0, -ext.length) : fileName;
+}
+
+function matchesTarget(source: string, targetStem: string): boolean {
+  if (!source) return false;
+  const tail = source.split('/').pop() ?? source;
+  const cleanTail = tail.replace(/\.(ts|tsx|js|jsx|mjs|cjs|go|py|pl|pm|t)$/i, '');
+  return cleanTail === targetStem || tail === targetStem;
+}
+
+export async function findImporters(
+  filePath: string,
+  root: string = process.cwd(),
+): Promise<string[]> {
   const resolved = resolve(filePath);
   const fileStat = await stat(resolved).catch(() => null);
   if (!fileStat?.isFile()) return [];
 
   const fileName = basename(resolved);
-  const ext = fileName.includes('.')
-    ? '.' + fileName.split('.').pop()!.toLowerCase()
-    : '';
-  if (!TS_JS_EXTENSIONS.has(ext)) return [];
+  const lang = languageForPath(fileName);
+  if (!lang) return [];
 
-  const stem = ext ? fileName.slice(0, -ext.length) : fileName;
-  const escapedStem = stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const importPattern = escapedStem + '(?:\\.(?:ts|tsx|js|jsx|mjs|cjs))?';
-
+  const targetStem = fileStem(fileName);
   const importers: string[] = [];
 
   async function walk(dir: string): Promise<void> {
@@ -39,33 +44,20 @@ export async function findImporters(filePath: string): Promise<string[]> {
       const fullPath = join(dir, entry.name);
 
       if (entry.isDirectory()) {
-        if (
-          ['node_modules', '.git', 'dist', 'build'].includes(entry.name) ||
-          entry.name.startsWith('.')
-        ) {
-          continue;
-        }
+        if (SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
         await walk(fullPath);
       } else if (entry.isFile()) {
-        const fext = entry.name.includes('.')
-          ? '.' + entry.name.split('.').pop()!.toLowerCase()
-          : '';
-        if (!TS_JS_EXTENSIONS.has(fext)) continue;
+        const entryLang = languageForPath(entry.name);
+        if (!entryLang) continue;
 
         try {
           const content = await readFile(fullPath, 'utf-8');
-          const regexStr =
-            '(?:import|export)\\s+(?:[\\s\\S]*?\\s+from\\s+|[\\\'\\"\\{])\\s*[\\\'"]([^\\\'"]*?/(?:\\\\.\\\\.\\/)*[^\\/]*?' +
-            importPattern +
-            ')[\\\'"]|require\\s*\\(\\s*[\\\'"]([^\\\'"]*?' +
-            importPattern +
-            ')[\\\'"\\s]*\\)';
-          const pattern = new RegExp(regexStr, 'g');
-          let match;
-          while ((match = pattern.exec(content)) !== null) {
-            importers.push(
-              `${relative(process.cwd(), fullPath)}: ${match[0].trim().slice(0, 100)}`,
-            );
+          const imports = scanImports(fullPath, content);
+          const hits = imports.filter((imp) => matchesTarget(imp.source, targetStem));
+          if (hits.length) {
+            const rel = relative(root, fullPath);
+            const preview = hits[0]!.source.slice(0, 80);
+            importers.push(`${rel}: ${preview}`);
           }
         } catch {
           // skip unreadable files
@@ -74,6 +66,6 @@ export async function findImporters(filePath: string): Promise<string[]> {
     }
   }
 
-  await walk(process.cwd());
+  await walk(root);
   return importers;
 }

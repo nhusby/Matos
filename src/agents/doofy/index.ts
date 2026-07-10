@@ -1,5 +1,5 @@
-import ts from 'typescript';
 import { resolve } from 'path';
+import { access, readFile } from 'fs/promises';
 import { TransformersEmbeddings } from 'vectra';
 import { Agent, type Api, type Message } from '../../lib/Agent.js';
 import { pruneContext } from '../../lib/ContextPruner.js';
@@ -46,18 +46,24 @@ export async function createDevAgent(config: DevAgentConfig): Promise<Agent> {
 
   agent.on('send-message', async () => {
     for (const path of agent.readFiles) {
-      if (!ts.sys.fileExists(resolve(path))) {
+      try {
+        await access(resolve(path));
+      } catch {
         agent.readFiles.delete(path);
       }
     }
     if (agent.readFiles.size === 0) return;
 
-    const fileContents = [...agent.readFiles]
-      .map((path) => {
-        const content = ts.sys.readFile(resolve(path));
-        return `<File path="${path}">\n\`\`\`typescript\n${content ?? '[file not readable]'}\n\`\`\`\n</File>`;
-      })
-      .join('\n');
+    const fileContents = (
+      await Promise.all(
+        [...agent.readFiles].map(async (path) => {
+          const content = await readFile(resolve(path), 'utf-8').catch(
+            () => null,
+          );
+          return `<File path="${path}">\n\`\`\`typescript\n${content ?? '[file not readable]'}\n\`\`\`\n</File>`;
+        }),
+      )
+    ).join('\n');
 
     agent.messages.push({
       role: 'system',

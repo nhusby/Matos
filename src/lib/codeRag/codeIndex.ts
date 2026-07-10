@@ -7,7 +7,22 @@ import type { Api } from '../Agent';
 import { extractSymbols } from './symbolExtractor';
 import type { ExtractedSymbol } from './symbolExtractor';
 
-const JS_TS_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx']);
+const JS_TS_EXTS = new Set([
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mts',
+  '.mjs',
+  '.cts',
+  '.cjs',
+  '.go',
+  '.py',
+  '.pyi',
+  '.pl',
+  '.pm',
+  '.t',
+]);
 const SKIP_DIRS = new Set([
   'node_modules',
   '.git',

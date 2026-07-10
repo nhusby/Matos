@@ -1,6 +1,7 @@
 import { writeFile } from 'fs/promises';
 import { resolve } from 'path';
 import type { Tool } from '../Agent';
+import { lspManager } from '../lsp/manager.js';
 
 export const writeFileTool: Tool = {
   name: 'WriteFile',
@@ -15,7 +16,9 @@ export const writeFileTool: Tool = {
     required: ['path', 'content'],
   },
   callback: async ({ path, content }) => {
-    await writeFile(resolve(path), content, 'utf-8');
+    const resolved = resolve(path);
+    await writeFile(resolved, content, 'utf-8');
+    await lspManager.notifyWrote(resolved, content);
     return `Successfully wrote to ${path}`;
   },
 };
