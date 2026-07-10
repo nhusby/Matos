@@ -23,7 +23,9 @@ export const DEFAULT_SERVERS: LspServerMap = {
 
 const DEFAULT_CONFIG_PATH = join(homedir(), '.matos', 'config.json');
 
-export async function loadLspConfig(path: string = DEFAULT_CONFIG_PATH): Promise<LspConfig> {
+export async function loadLspConfig(
+  path: string = DEFAULT_CONFIG_PATH,
+): Promise<LspConfig> {
   let raw: string;
   try {
     raw = await readFile(path, 'utf-8');
@@ -35,7 +37,9 @@ export async function loadLspConfig(path: string = DEFAULT_CONFIG_PATH): Promise
   try {
     parsed = JSON.parse(raw);
   } catch (e) {
-    console.warn(`[lsp] Failed to parse ${path}: ${(e as Error).message}. Using defaults.`);
+    console.warn(
+      `[lsp] Failed to parse ${path}: ${(e as Error).message}. Using defaults.`,
+    );
     return { languageServers: { ...DEFAULT_SERVERS } };
   }
 
@@ -45,6 +49,9 @@ export async function loadLspConfig(path: string = DEFAULT_CONFIG_PATH): Promise
   };
 }
 
-export function serverForLanguage(config: LspConfig, lang: Language): LspServerConfig | undefined {
+export function serverForLanguage(
+  config: LspConfig,
+  lang: Language,
+): LspServerConfig | undefined {
   return config.languageServers[lang];
 }

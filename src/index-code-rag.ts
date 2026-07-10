@@ -5,7 +5,7 @@ import { CodeIndex } from './lib/tools';
 
 // Force single-threaded ONNX execution to prevent native mutex crashes
 // during shutdown.
-env.backends.onnx.wasm.numThreads = 1;
+env.backends.onnx.wasm!.numThreads = 1;
 
 async function main() {
   const apiKey = process.env['OPENAI_API_KEY'];

@@ -1,4 +1,4 @@
-import type { Api, Message, Tool, ToolPart } from '../src/lib/Agent.js';
+import type { Api, Message, Tool, ToolPart } from '../lib/Agent';
 
 export const createMockTool = (
   name: string,

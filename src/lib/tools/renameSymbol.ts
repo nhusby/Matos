@@ -1,9 +1,6 @@
 import { resolve, relative } from 'path';
 import type { Tool } from '../Agent';
-import {
-  pickRenameBackend,
-  applyRenameResult,
-} from '../lsp/backends.js';
+import { pickRenameBackend, applyRenameResult } from '../lsp/backends.js';
 
 export const renameSymbolTool: Tool = {
   name: 'RenameSymbol',

@@ -29,7 +29,10 @@ function getQuery(lang: Language, key: string): Parser.Query | null {
     queryCache.set(cacheKey, q);
     return q;
   } catch (e) {
-    console.warn(`[tree-sitter] Failed to compile ${key} query for ${lang}:`, (e as Error).message);
+    console.warn(
+      `[tree-sitter] Failed to compile ${key} query for ${lang}:`,
+      (e as Error).message,
+    );
     return null;
   }
 }
@@ -58,7 +61,10 @@ export interface ExtendsInfo {
   parentNames: string[];
 }
 
-function linesFromNode(node: Parser.SyntaxNode): { startLine: number; endLine: number } {
+function linesFromNode(node: Parser.SyntaxNode): {
+  startLine: number;
+  endLine: number;
+} {
   return {
     startLine: node.startPosition.row + 1,
     endLine: node.endPosition.row + 1,
@@ -82,11 +88,17 @@ function findEnclosingClass(node: Parser.SyntaxNode): string | undefined {
   return undefined;
 }
 
-function extractCapturesByMatch(query: Parser.Query, root: Parser.SyntaxNode): Parser.QueryMatch[] {
+function extractCapturesByMatch(
+  query: Parser.Query,
+  root: Parser.SyntaxNode,
+): Parser.QueryMatch[] {
   return query.matches(root);
 }
 
-function findCapture(matches: Parser.QueryMatch[], name: string): Parser.SyntaxNode | undefined {
+function findCapture(
+  matches: Parser.QueryMatch[],
+  name: string,
+): Parser.SyntaxNode | undefined {
   for (const m of matches) {
     for (const c of m.captures) {
       if (c.name === name) return c.node;
@@ -95,7 +107,10 @@ function findCapture(matches: Parser.QueryMatch[], name: string): Parser.SyntaxN
   return undefined;
 }
 
-function findAllCaptures(matches: Parser.QueryMatch[], name: string): Parser.SyntaxNode[] {
+function findAllCaptures(
+  matches: Parser.QueryMatch[],
+  name: string,
+): Parser.SyntaxNode[] {
   const out: Parser.SyntaxNode[] = [];
   for (const m of matches) {
     for (const c of m.captures) {
@@ -105,7 +120,10 @@ function findAllCaptures(matches: Parser.QueryMatch[], name: string): Parser.Syn
   return out;
 }
 
-export function extractExports(filePath: string, content: string): ExportInfo[] {
+export function extractExports(
+  filePath: string,
+  content: string,
+): ExportInfo[] {
   const lang = languageForPath(filePath);
   if (!lang) return [];
   const query = getQuery(lang, 'exports');
@@ -124,7 +142,10 @@ export function extractExports(filePath: string, content: string): ExportInfo[] 
   return [...names].map((name) => ({ name }));
 }
 
-export function extractSymbols(filePath: string, content: string): SymbolInfo[] {
+export function extractSymbols(
+  filePath: string,
+  content: string,
+): SymbolInfo[] {
   const lang = languageForPath(filePath);
   if (!lang) return [];
   const query = getQuery(lang, 'symbols');
@@ -142,13 +163,25 @@ export function extractSymbols(filePath: string, content: string): SymbolInfo[] 
     let kind: SymbolInfo['kind'] = 'function';
     let className: string | undefined;
 
-    if (declType === 'class_declaration' || declType === 'class_definition' || declType === 'package_statement' || declType === 'type_declaration') {
+    if (
+      declType === 'class_declaration' ||
+      declType === 'class_definition' ||
+      declType === 'package_statement' ||
+      declType === 'type_declaration'
+    ) {
       kind = 'class';
-    } else if (declType === 'method_definition' || declType === 'method_declaration') {
+    } else if (
+      declType === 'method_definition' ||
+      declType === 'method_declaration'
+    ) {
       kind = 'method';
       const enclosingClass = findEnclosingClass(decl);
       if (enclosingClass) className = enclosingClass;
-    } else if (declType === 'function_declaration' || declType === 'function_definition' || declType === 'subroutine_declaration_statement') {
+    } else if (
+      declType === 'function_declaration' ||
+      declType === 'function_definition' ||
+      declType === 'subroutine_declaration_statement'
+    ) {
       const enclosingClass = findEnclosingClass(decl);
       if (enclosingClass) {
         kind = 'method';
@@ -180,7 +213,10 @@ export function scanImports(filePath: string, content: string): ImportInfo[] {
   return scanImportsFromTree(lang, tree.rootNode);
 }
 
-function scanImportsFromTree(lang: Language, root: Parser.SyntaxNode): ImportInfo[] {
+function scanImportsFromTree(
+  lang: Language,
+  root: Parser.SyntaxNode,
+): ImportInfo[] {
   switch (lang) {
     case 'typescript':
     case 'tsx':
@@ -195,7 +231,9 @@ function scanImportsFromTree(lang: Language, root: Parser.SyntaxNode): ImportInf
   return [];
 }
 
-function nodeTextSafe(node: Parser.SyntaxNode | null | undefined): string | undefined {
+function nodeTextSafe(
+  node: Parser.SyntaxNode | null | undefined,
+): string | undefined {
   if (!node) return undefined;
   try {
     return node.text;
@@ -226,7 +264,12 @@ function extractTSSymbols(clause: Parser.SyntaxNode): string[] {
   const symbols: string[] = [];
   walkTree(clause, (n) => {
     if (n.type === 'identifier') symbols.push(n.text);
-    else if (n.type === 'import_clause' || n.type === 'named_imports' || n.type === 'namespace_import') return;
+    else if (
+      n.type === 'import_clause' ||
+      n.type === 'named_imports' ||
+      n.type === 'namespace_import'
+    )
+      return;
   });
   return symbols;
 }
@@ -240,7 +283,9 @@ function scanGoImports(root: Parser.SyntaxNode): ImportInfo[] {
       const pathNode = findChildByType(spec, 'interpreted_string_literal');
       const pathText = nodeTextSafe(pathNode);
       if (!pathText) continue;
-      const aliasNode = spec.namedChildren.find((c) => c.type === 'package_identifier');
+      const aliasNode = spec.namedChildren.find(
+        (c) => c.type === 'package_identifier',
+      );
       const symbols = aliasNode ? [aliasNode.text] : [];
       imports.push({ source: cleanSource(pathText), symbols });
     }
@@ -280,12 +325,18 @@ function scanPerlImports(root: Parser.SyntaxNode): ImportInfo[] {
   return imports;
 }
 
-function walkTree(node: Parser.SyntaxNode, visit: (n: Parser.SyntaxNode) => void): void {
+function walkTree(
+  node: Parser.SyntaxNode,
+  visit: (n: Parser.SyntaxNode) => void,
+): void {
   visit(node);
   for (const c of node.children) walkTree(c, visit);
 }
 
-function findChildByType(node: Parser.SyntaxNode, type: string): Parser.SyntaxNode | null {
+function findChildByType(
+  node: Parser.SyntaxNode,
+  type: string,
+): Parser.SyntaxNode | null {
   for (const c of node.children) {
     if (c.type === type) return c;
   }
@@ -296,7 +347,10 @@ function findChildByType(node: Parser.SyntaxNode, type: string): Parser.SyntaxNo
   return null;
 }
 
-function collectByType(node: Parser.SyntaxNode, type: string): Parser.SyntaxNode[] {
+function collectByType(
+  node: Parser.SyntaxNode,
+  type: string,
+): Parser.SyntaxNode[] {
   const out: Parser.SyntaxNode[] = [];
   walkTree(node, (n) => {
     if (n.type === type) out.push(n);
@@ -304,7 +358,10 @@ function collectByType(node: Parser.SyntaxNode, type: string): Parser.SyntaxNode
   return out;
 }
 
-export function extractExtends(filePath: string, content: string): ExtendsInfo[] {
+export function extractExtends(
+  filePath: string,
+  content: string,
+): ExtendsInfo[] {
   const lang = languageForPath(filePath);
   if (!lang) return [];
   const query = getQuery(lang, 'extendsClause');

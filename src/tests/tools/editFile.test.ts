@@ -2,9 +2,11 @@ import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, writeFile, readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { editFileTool } from '../../src/lib/tools/editFile.js';
+import { createEditFileTool } from '../../lib/tools/editFile';
 
 let tmpDir: string;
+
+const editFileTool = createEditFileTool({ bypassCwd: true });
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(join(tmpdir(), 'matos-editfile-'));
@@ -84,4 +86,14 @@ test('editFile: replaces empty old_string with new content (prepends)', async ()
     new_string: 'hello ',
   } as any);
   expect(out).toMatch(/Successfully edited|Error/);
+});
+
+test('editFile: blocks paths outside cwd when bypassCwd is false', async () => {
+  const restricted = createEditFileTool();
+  const out = await restricted.callback!({
+    path: '/etc/hosts',
+    old_string: 'x',
+    new_string: 'y',
+  } as any);
+  expect(out).toBe('Error: path is outside the current working directory.');
 });

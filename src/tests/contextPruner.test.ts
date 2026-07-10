@@ -1,13 +1,13 @@
 import { test, expect } from 'bun:test';
-import { pruneContext } from '../src/lib/ContextPruner.js';
-import type { Message, Tool } from '../src/lib/Agent.js';
+import { pruneContext } from '../lib/ContextPruner';
+import type { Message, Tool } from '../lib/Agent';
 import {
   createMockApi,
   createMockTool,
   makeAgentPart,
   makeMessage,
   makeToolPart,
-} from './helpers.js';
+} from './helpers';
 
 test('removes tool calls older than TTL when summarize is false', async () => {
   const tools = [createMockTool('read_file', 2, false)];
@@ -66,9 +66,7 @@ test('keeps tool calls within TTL', async () => {
 
   const oldMsgParts = oldAssistantMsg.parts!;
   expect(
-    oldMsgParts.some(
-      (p) => p.role === 'tool' && p.toolCallId === 'call_1',
-    ),
+    oldMsgParts.some((p) => p.role === 'tool' && p.toolCallId === 'call_1'),
   ).toBe(true);
 });
 
@@ -113,7 +111,8 @@ test('removes reasoning content from messages older than 3 turns', async () => {
   }
 
   const lastAssistant = messages[messages.length - 1];
-  expect(lastAssistant?.parts?.[0]?.reasoningContent).toBeTruthy();
+  const lastPart = lastAssistant?.parts?.[0] as { reasoningContent?: string };
+  expect(lastPart?.reasoningContent).toBeTruthy();
 });
 
 test('summarizes tool calls when summarize flag is true', async () => {
@@ -227,8 +226,6 @@ test('preserves tool calls with no TTL config', async () => {
 
   const oldMsgParts = oldAssistantMsg.parts!;
   expect(
-    oldMsgParts.some(
-      (p) => p.role === 'tool' && p.toolCallId === 'call_nottl',
-    ),
+    oldMsgParts.some((p) => p.role === 'tool' && p.toolCallId === 'call_nottl'),
   ).toBe(true);
 });

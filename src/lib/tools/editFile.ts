@@ -3,7 +3,11 @@ import { resolve } from 'path';
 import type { Tool } from '../Agent';
 import { lspManager } from '../lsp/manager.js';
 
-export const editFileTool: Tool = {
+export interface EditFileConfig {
+  bypassCwd?: boolean;
+}
+
+export const createEditFileTool = (config: EditFileConfig = {}): Tool => ({
   name: 'EditFile',
   description:
     'Edit a file by replacing an exact match of old_string with new_string. old_string must be unique in the file.',
@@ -25,6 +29,10 @@ export const editFileTool: Tool = {
   },
   callback: async ({ path, old_string, new_string }) => {
     const resolved = resolve(path);
+    if (!config.bypassCwd && !resolved.startsWith(process.cwd())) {
+      return 'Error: path is outside the current working directory.';
+    }
+
     const content = await readFile(resolved, 'utf-8');
 
     const count = content.split(old_string).length - 1;
@@ -37,4 +45,4 @@ export const editFileTool: Tool = {
     await lspManager.notifyWrote(resolved, newContent);
     return `Successfully edited ${path}`;
   },
-};
+});

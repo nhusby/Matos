@@ -2,7 +2,7 @@ import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { deleteFileTool } from '../../src/lib/tools/deleteFile.js';
+import { deleteFileTool } from '../../lib/tools/deleteFile';
 
 let tmpDir: string;
 let originalCwd: string;

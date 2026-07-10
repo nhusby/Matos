@@ -2,7 +2,7 @@ import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { readFileWithContextTool } from '../../src/lib/tools/readFileWithContext.js';
+import { readFileWithContextTool } from '../../lib/tools/readFileWithContext';
 
 let tmpDir: string;
 
@@ -17,7 +17,9 @@ afterEach(async () => {
 test('readFileWithContext: returns plain content for unsupported extension', async () => {
   const filePath = join(tmpDir, 'readme.md');
   await writeFile(filePath, '# Hello\n\nThis is markdown.\n');
-  const out = (await readFileWithContextTool.callback!({ path: filePath } as any)) as string;
+  const out = (await readFileWithContextTool.callback!({
+    path: filePath,
+  } as any)) as string;
   expect(out).toContain('# Hello');
   expect(out).not.toContain('<SourceFile');
 });
@@ -25,7 +27,9 @@ test('readFileWithContext: returns plain content for unsupported extension', asy
 test('readFileWithContext: wraps supported source file in SourceFile block', async () => {
   const filePath = join(tmpDir, 'a.ts');
   await writeFile(filePath, 'export const x = 1;\n');
-  const out = (await readFileWithContextTool.callback!({ path: filePath } as any)) as string;
+  const out = (await readFileWithContextTool.callback!({
+    path: filePath,
+  } as any)) as string;
   expect(out).toContain('<SourceFile');
   expect(out).toContain('export const x = 1;');
   expect(out).toContain('</SourceFile>');
@@ -49,7 +53,9 @@ test('readFileWithContext: includes extends chain parent files', async () => {
     `import { Base } from './base';\nexport class Child extends Base {}\n`,
   );
 
-  const out = (await readFileWithContextTool.callback!({ path: childPath } as any)) as string;
+  const out = (await readFileWithContextTool.callback!({
+    path: childPath,
+  } as any)) as string;
   expect(out).toContain('<ExtendedClass');
   expect(out).toContain('export class Base { method() {} }');
   expect(out).toContain('export class Child extends Base');
@@ -99,7 +105,9 @@ type World struct { Base }
 func (w World) Name() string { return "x" }
 `,
   );
-  const out = (await readFileWithContextTool.callback!({ path: filePath } as any)) as string;
+  const out = (await readFileWithContextTool.callback!({
+    path: filePath,
+  } as any)) as string;
   expect(out).toContain('<SourceFile');
   expect(out).toContain('type World struct');
   expect(out).toContain('```go');
@@ -108,7 +116,9 @@ func (w World) Name() string { return "x" }
 test('readFileWithContext: handles empty file', async () => {
   const filePath = join(tmpDir, 'empty.ts');
   await writeFile(filePath, '');
-  const out = (await readFileWithContextTool.callback!({ path: filePath } as any)) as string;
+  const out = (await readFileWithContextTool.callback!({
+    path: filePath,
+  } as any)) as string;
   expect(out).toContain('<SourceFile');
 });
 
@@ -122,7 +132,9 @@ test('readFileWithContext: does not duplicate parent in body when already in ext
     `import { Parent } from './parent';\nexport class Child extends Parent {}\n`,
   );
 
-  const out = (await readFileWithContextTool.callback!({ path: childPath } as any)) as string;
+  const out = (await readFileWithContextTool.callback!({
+    path: childPath,
+  } as any)) as string;
   // Parent should appear in ExtendedClass block, Child in SourceFile block
   const extendedCount = (out.match(/<ExtendedClass/g) || []).length;
   const sourceCount = (out.match(/<SourceFile/g) || []).length;
@@ -133,7 +145,9 @@ test('readFileWithContext: does not duplicate parent in body when already in ext
 test('readFileWithContext: handles file with no imports or extends', async () => {
   const filePath = join(tmpDir, 'solo.ts');
   await writeFile(filePath, 'export const answer = 42;\n');
-  const out = (await readFileWithContextTool.callback!({ path: filePath } as any)) as string;
+  const out = (await readFileWithContextTool.callback!({
+    path: filePath,
+  } as any)) as string;
   expect(out).not.toContain('<ExtendedClass');
   expect(out).toContain('export const answer = 42;');
 });

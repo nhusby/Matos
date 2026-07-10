@@ -1,10 +1,7 @@
 import { resolve, relative, join, dirname, basename } from 'path';
 import { readFile, stat } from 'fs/promises';
 import type { Tool } from '../Agent';
-import {
-  extractExtends,
-  scanImports,
-} from '../parsers/extractors.js';
+import { extractExtends, scanImports } from '../parsers/extractors.js';
 import { languageForPath } from '../parsers/languages.js';
 import { pickSignaturesBackend } from '../lsp/backends.js';
 

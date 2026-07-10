@@ -9,12 +9,29 @@ import { LspClient } from './client.js';
 const execAsync = promisify(exec);
 
 const SUPPORTED_EXTS = [
-  '.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs',
-  '.go', '.py', '.pyi', '.pl', '.pm', '.t',
+  '.ts',
+  '.tsx',
+  '.mts',
+  '.cts',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.go',
+  '.py',
+  '.pyi',
+  '.pl',
+  '.pm',
+  '.t',
 ];
 
 const SKIP_DIRS = new Set([
-  'node_modules', '.git', 'dist', 'build', '.code-rag-index', '.idea',
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  '.code-rag-index',
+  '.idea',
 ]);
 
 class LspManager {
@@ -36,7 +53,11 @@ class LspManager {
     return found;
   }
 
-  private async walk(dir: string, found: Set<Language>, depth: number): Promise<void> {
+  private async walk(
+    dir: string,
+    found: Set<Language>,
+    depth: number,
+  ): Promise<void> {
     if (depth > 6) return;
     let entries;
     try {
@@ -74,9 +95,7 @@ class LspManager {
     const languages = await this.detectLanguages(root);
     if (languages.size === 0) return;
 
-    console.log(
-      `[lsp] detected languages: ${[...languages].join(', ')}`,
-    );
+    console.log(`[lsp] detected languages: ${[...languages].join(', ')}`);
 
     await Promise.all(
       [...languages].map((lang) => this.startForLanguage(lang, root)),
@@ -87,7 +106,9 @@ class LspManager {
     if (this.clients.has(lang)) return;
     const config = this.serverConfigs[lang];
     if (!config) {
-      console.warn(`[lsp:${lang}] no server configured in ~/.matos/config.json`);
+      console.warn(
+        `[lsp:${lang}] no server configured in ~/.matos/config.json`,
+      );
       return;
     }
     const exists = await this.commandOnPath(config.command);
@@ -104,9 +125,7 @@ class LspManager {
       this.startedByUs.add(lang);
       console.log(`[lsp:${lang}] started ${config.command}`);
     } catch (e) {
-      console.warn(
-        `[lsp:${lang}] failed to start: ${(e as Error).message}`,
-      );
+      console.warn(`[lsp:${lang}] failed to start: ${(e as Error).message}`);
     }
   }
 

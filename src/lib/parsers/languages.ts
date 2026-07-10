@@ -17,7 +17,9 @@ const EXT_TO_LANGUAGE: Record<string, Language> = {
   '.t': 'perl',
 };
 
-export const SUPPORTED_EXTENSIONS: Set<string> = new Set(Object.keys(EXT_TO_LANGUAGE));
+export const SUPPORTED_EXTENSIONS: Set<string> = new Set(
+  Object.keys(EXT_TO_LANGUAGE),
+);
 
 export function languageForPath(filePath: string): Language | undefined {
   const dot = filePath.lastIndexOf('.');

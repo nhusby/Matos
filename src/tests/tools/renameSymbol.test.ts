@@ -2,7 +2,7 @@ import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, writeFile, readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { renameSymbolTool } from '../../src/lib/tools/renameSymbol.js';
+import { renameSymbolTool } from '../../lib/tools/renameSymbol';
 
 let tmpDir: string;
 let originalCwd: string;
@@ -56,7 +56,10 @@ test('renameSymbol: renames a TS symbol across files', async () => {
   const target = join(tmpDir, 'a.ts');
   await writeFile(target, 'export const unique = 1;\n');
   const importer = join(tmpDir, 'b.ts');
-  await writeFile(importer, `import { unique } from './a';\nconsole.log(unique);\n`);
+  await writeFile(
+    importer,
+    `import { unique } from './a';\nconsole.log(unique);\n`,
+  );
 
   const out = await renameSymbolTool.callback!({
     path: target,

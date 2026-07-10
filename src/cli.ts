@@ -42,7 +42,7 @@ async function main() {
     apiKey,
     baseURL: baseUrl,
   }) as any;
-  const model = ['Qwen3.6-35B-A3B', 'glm-5.2', 'glm-5-turbo', 'gpt-5-mini'];
+  const model = ['Qwen3.6-35B-A3B', 'glm-5.1', 'glm-5-turbo', 'gpt-5-mini'];
   let codeIndex: CodeIndex | undefined;
   const agent = await createAgent({
     api,
@@ -52,9 +52,11 @@ async function main() {
     },
   });
 
-  lspManager.startDetected(process.cwd()).catch((e) =>
-    process.stderr.write(`[lsp] startup error: ${e?.message ?? e}\n`),
-  );
+  lspManager
+    .startDetected(process.cwd())
+    .catch((e) =>
+      process.stderr.write(`[lsp] startup error: ${e?.message ?? e}\n`),
+    );
 
   let currentRun: Emitter | null = null;
   let busy = false;
@@ -74,21 +76,40 @@ async function main() {
       content: input,
       created: new Date(),
     });
+    let reasoning = false;
 
-    currentRun.on('reasoning-start', () =>
-      process.stdout.write(THINKING_YELLOW + '\n<thinking>\n'),
-    );
-    currentRun.on('reasoning', (chunk: string) =>
-      process.stdout.write(THINKING_YELLOW + chunk),
-    );
+    currentRun.on('reasoning-start', () => {
+      reasoning = true;
+      process.stdout.write(THINKING_YELLOW + '\n<thinking>\n');
+    });
+    currentRun.on('reasoning', (chunk: string) => {
+      if (!reasoning) {
+        reasoning = true;
+        process.stdout.write('\n' + THINKING_YELLOW);
+      }
+      process.stdout.write(chunk);
+    });
     currentRun.on('reasoning-finished', () => {
       process.stdout.write('\n</thinking>' + RESET + '\n\n');
+      reasoning = false;
     });
-    currentRun.on('content', (chunk: string) => process.stdout.write(chunk));
+    currentRun.on('content', (chunk: string) => {
+      if (reasoning) {
+        reasoning = false;
+        process.stdout.write(RESET + '\n');
+      }
+      process.stdout.write(chunk);
+    });
     currentRun.on('tool-result', (tr: ToolPart) => {
+      if (reasoning) {
+        reasoning = false;
+        process.stdout.write(RESET + '\n');
+      }
       const pathInfo = tr.params?.path ? ` [${tr.params.path}]` : '';
       process.stdout.write(`\n## ToolCall ${tr.name}${pathInfo} Result:\n`);
-      process.stdout.write(tr.content.replace(/\s+/g, ' ').slice(0, 80));
+      process.stdout.write(
+        '  ' + tr.content.replace(/\s+/g, ' ').slice(0, 78) + '\n',
+      );
     });
 
     try {

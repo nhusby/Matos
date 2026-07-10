@@ -1,8 +1,7 @@
-export { readFileTool } from './readFile';
-export { writeFileTool } from './writeFile';
-export { editFileTool } from './editFile';
+export { createReadFileTool, type ReadFileConfig } from './readFile';
+export { createWriteFileTool, type WriteFileConfig } from './writeFile';
+export { createEditFileTool, type EditFileConfig } from './editFile';
 export { renameSymbolTool } from './renameSymbol';
-export { helloWorldTool } from './helloWorld';
 export { readFileWithContextTool } from './readFileWithContext';
 export { createListFilesTool } from './listFiles';
 export { createFileTreeTool, buildFileTree } from './fileTree';

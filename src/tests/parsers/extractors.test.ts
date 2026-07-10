@@ -5,7 +5,7 @@ import {
   scanImports,
   extractExtends,
   findNthIdentifier,
-} from '../../src/lib/parsers/extractors.js';
+} from '../../lib/parsers/extractors';
 
 // ============================================================
 // extractExports
@@ -20,13 +20,17 @@ export type Qux = string;
 export enum Quux {}
 export const x = 1;
 `;
-  const names = extractExports('m.ts', code).map((e) => e.name).sort();
+  const names = extractExports('m.ts', code)
+    .map((e) => e.name)
+    .sort();
   expect(names).toEqual(['Bar', 'IBaz', 'Quux', 'Qux', 'foo', 'x']);
 });
 
 test('extractExports: TS re-exports', () => {
   const code = `export { foo, bar } from './other';`;
-  const names = extractExports('m.ts', code).map((e) => e.name).sort();
+  const names = extractExports('m.ts', code)
+    .map((e) => e.name)
+    .sort();
   expect(names).toEqual(['bar', 'foo']);
 });
 
@@ -42,7 +46,9 @@ type World struct {}
 type IThing interface {}
 var Global = 1
 const Pi = 3.14`;
-  const names = extractExports('main.go', code).map((e) => e.name).sort();
+  const names = extractExports('main.go', code)
+    .map((e) => e.name)
+    .sort();
   expect(names).toEqual(['Global', 'Hello', 'IThing', 'Pi', 'World']);
 });
 
@@ -60,7 +66,9 @@ class Cls:
 
 PRIVATE_VAL = 1
 `;
-  const names = extractExports('m.py', code).map((e) => e.name).sort();
+  const names = extractExports('m.py', code)
+    .map((e) => e.name)
+    .sort();
   expect(names).toEqual(['Cls', 'PRIVATE_VAL', 'top_level']);
 });
 
@@ -78,7 +86,9 @@ test('extractExports: TSX exports work via TS query bundle', () => {
 export function Foo() { return <div/>; }
 export const Bar = () => <span/>;
 `;
-  const names = extractExports('c.tsx', code).map((e) => e.name).sort();
+  const names = extractExports('c.tsx', code)
+    .map((e) => e.name)
+    .sort();
   expect(names).toEqual(['Bar', 'Foo']);
 });
 
@@ -332,7 +342,7 @@ test('findNthIdentifier: returns undefined when occurrence exceeds count', () =>
 });
 
 test('findNthIdentifier: returns undefined for unsupported extension', () => {
-  expect(findNthIdentifier('m.md', 'foo', 1)).toBeUndefined();
+  expect(findNthIdentifier('m.md', 'content', 'foo', 1)).toBeUndefined();
 });
 
 test('findNthIdentifier: tracks line number for multiline', () => {

@@ -3,7 +3,7 @@ import {
   languageForPath,
   isSupportedPath,
   SUPPORTED_EXTENSIONS,
-} from '../../src/lib/parsers/languages.js';
+} from '../../lib/parsers/languages';
 
 test('languageForPath maps TypeScript extensions', () => {
   expect(languageForPath('foo.ts')).toBe('typescript');
@@ -65,7 +65,18 @@ test('languageForPath handles absolute paths', () => {
 });
 
 test('SUPPORTED_EXTENSIONS contains all expected extensions', () => {
-  for (const ext of ['.ts', '.tsx', '.js', '.jsx', '.go', '.py', '.pyi', '.pl', '.pm', '.t']) {
+  for (const ext of [
+    '.ts',
+    '.tsx',
+    '.js',
+    '.jsx',
+    '.go',
+    '.py',
+    '.pyi',
+    '.pl',
+    '.pm',
+    '.t',
+  ]) {
     expect(SUPPORTED_EXTENSIONS.has(ext)).toBe(true);
   }
 });

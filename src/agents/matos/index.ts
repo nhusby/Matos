@@ -6,9 +6,9 @@ import { Agent, type Api, type Message } from '../../lib/Agent.js';
 import { pruneContext } from '../../lib/ContextPruner.js';
 import { ConversationLogger } from '../../lib/ConversationLogger.js';
 import {
-  readFileTool,
-  writeFileTool,
-  editFileTool,
+  createReadFileTool,
+  createWriteFileTool,
+  createEditFileTool,
   renameSymbolTool,
   readFileWithContextTool,
   renameFileTool,
@@ -38,9 +38,9 @@ export async function createAgent(config: DevAgentConfig): Promise<Agent> {
     api: config.api,
     model: config.model,
     tools: [
-      readFileTool,
-      writeFileTool,
-      editFileTool,
+      createReadFileTool(),
+      createWriteFileTool(),
+      createEditFileTool(),
       renameSymbolTool,
       readFileWithContextTool,
       createListFilesTool({ bypassCwd: true }),

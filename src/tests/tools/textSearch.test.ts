@@ -2,7 +2,7 @@ import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { createTextSearchTool } from '../../src/lib/tools/textSearch.js';
+import { createTextSearchTool } from '../../lib/tools/textSearch';
 
 let tmpDir: string;
 let originalCwd: string;

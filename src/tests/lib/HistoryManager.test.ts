@@ -2,8 +2,8 @@ import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { saveHistory, loadHistory } from '../../src/lib/HistoryManager.js';
-import type { Agent, Message } from '../../src/lib/Agent.js';
+import { saveHistory, loadHistory } from '../../lib/HistoryManager';
+import type { Agent, Message } from '../../lib/Agent';
 
 let tmpDir: string;
 let originalCwd: string;
@@ -20,7 +20,10 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-function makeMockAgent(messages: Message[] = [], readFiles: Set<string> = new Set()): Agent {
+function makeMockAgent(
+  messages: Message[] = [],
+  readFiles: Set<string> = new Set(),
+): Agent {
   return {
     messages,
     readFiles,
@@ -29,18 +32,21 @@ function makeMockAgent(messages: Message[] = [], readFiles: Set<string> = new Se
 
 test('saveHistory: writes a snapshot with messages and readFiles', async () => {
   const created = new Date('2025-01-01T00:00:00Z');
-  const agent = makeMockAgent([
-    {
-      role: 'user',
-      content: 'hi',
-      created,
-    } as Message,
-    {
-      role: 'assistant',
-      content: 'hello',
-      created,
-    } as Message,
-  ], new Set(['/some/file.ts']));
+  const agent = makeMockAgent(
+    [
+      {
+        role: 'user',
+        content: 'hi',
+        created,
+      } as Message,
+      {
+        role: 'assistant',
+        content: 'hello',
+        created,
+      } as Message,
+    ],
+    new Set(['/some/file.ts']),
+  );
 
   await saveHistory(agent);
 

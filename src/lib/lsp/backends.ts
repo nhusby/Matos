@@ -6,12 +6,7 @@ import { languageForPath } from '../parsers/languages.js';
 import { findNthIdentifier } from '../parsers/extractors.js';
 import { readFile, writeFile } from 'fs/promises';
 import { lspManager } from './manager.js';
-import type {
-  Position,
-  Range,
-  TextEdit,
-  WorkspaceEdit,
-} from './protocol.js';
+import type { Position, Range, TextEdit, WorkspaceEdit } from './protocol.js';
 
 export interface RenameEdit {
   start: number;
@@ -81,7 +76,13 @@ class TsRenameBackend implements RenameBackend {
       );
     }
 
-    const locations = ls.findRenameLocations(resolved, offset, false, false, false);
+    const locations = ls.findRenameLocations(
+      resolved,
+      offset,
+      false,
+      false,
+      false,
+    );
     if (!locations?.length) {
       throw new Error(`No references found for "${name}" in ${resolved}`);
     }
@@ -150,7 +151,11 @@ class LspRenameBackend implements RenameBackend {
     }
 
     const lspPos: Position = { line: pos.row, character: pos.column };
-    const edit: WorkspaceEdit | null = await client.rename(filePath, lspPos, newName);
+    const edit: WorkspaceEdit | null = await client.rename(
+      filePath,
+      lspPos,
+      newName,
+    );
     if (!edit) return { byFile: new Map() };
 
     const byFile = new Map<string, RenameEdit[]>();
@@ -158,12 +163,13 @@ class LspRenameBackend implements RenameBackend {
     for (const [uri, edits] of editsByUri) {
       const path = fileURLToPath(uri);
       const fileContent = await readFile(path, 'utf-8');
-      const translated = edits
-        .map((e) => ({
-          newText: e.newText,
-          start: offsetFromRange(fileContent, e.range).start,
-          length: offsetFromRange(fileContent, e.range).end - offsetFromRange(fileContent, e.range).start,
-        }));
+      const translated = edits.map((e) => ({
+        newText: e.newText,
+        start: offsetFromRange(fileContent, e.range).start,
+        length:
+          offsetFromRange(fileContent, e.range).end -
+          offsetFromRange(fileContent, e.range).start,
+      }));
       byFile.set(path, translated);
     }
     return { byFile };
@@ -214,10 +220,12 @@ class LspSignaturesBackend implements SignaturesBackend {
         const content = await readFile(file, 'utf-8');
         const { extractSymbols } = await import('../parsers/extractors.js');
         for (const sym of extractSymbols(file, content)) {
-          const hover = await client.hover(file, {
-            line: (sym.startLine - 1),
-            character: 0,
-          }).catch(() => null);
+          const hover = await client
+            .hover(file, {
+              line: sym.startLine - 1,
+              character: 0,
+            })
+            .catch(() => null);
           if (!hover) continue;
           const text = hoverToString(hover);
           if (text) out.set(`${sym.name}::${file}`, text);
@@ -240,19 +248,25 @@ export function pickRenameBackend(filePath: string): RenameBackend {
   const lang = languageForPath(filePath);
   if (lang && TS_LANGS.has(lang)) return tsRename;
   if (!lang) throw new Error(`Unsupported file type: ${filePath}`);
-  if (!lspRenameCache.has(lang)) lspRenameCache.set(lang, new LspRenameBackend(lang));
+  if (!lspRenameCache.has(lang))
+    lspRenameCache.set(lang, new LspRenameBackend(lang));
   return lspRenameCache.get(lang)!;
 }
 
 export function pickSignaturesBackend(filePath: string): SignaturesBackend {
   const lang = languageForPath(filePath);
   if (lang && TS_LANGS.has(lang)) return tsSigs;
-  if (!lang) return lspSigsCache.get('none') ?? new LspSignaturesBackend('none');
-  if (!lspSigsCache.has(lang)) lspSigsCache.set(lang, new LspSignaturesBackend(lang));
+  if (!lang)
+    return lspSigsCache.get('none') ?? new LspSignaturesBackend('none');
+  if (!lspSigsCache.has(lang))
+    lspSigsCache.set(lang, new LspSignaturesBackend(lang));
   return lspSigsCache.get(lang)!;
 }
 
-function offsetFromRange(content: string, range: Range): { start: number; end: number } {
+function offsetFromRange(
+  content: string,
+  range: Range,
+): { start: number; end: number } {
   const lines = content.split('\n');
   let start = 0;
   for (let i = 0; i < range.start.line; i++) start += lines[i]!.length + 1;
@@ -463,13 +477,18 @@ function extractTsImportSignatures(
   return emitted;
 }
 
-export async function applyRenameResult(result: RenameResult): Promise<string[]> {
+export async function applyRenameResult(
+  result: RenameResult,
+): Promise<string[]> {
   const out: string[] = [];
   for (const [fileName, edits] of result.byFile) {
     let content = await readFile(fileName, 'utf-8');
     const sorted = [...edits].sort((a, b) => b.start - a.start);
     for (const edit of sorted) {
-      content = content.slice(0, edit.start) + edit.newText + content.slice(edit.start + edit.length);
+      content =
+        content.slice(0, edit.start) +
+        edit.newText +
+        content.slice(edit.start + edit.length);
     }
     await writeFile(fileName, content, 'utf-8');
     out.push(`${edits.length} occurrence(s) in ${fileName}`);

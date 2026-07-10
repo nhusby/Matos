@@ -58,9 +58,7 @@ export class LspClient {
       this.ready = false;
     });
     child.on('exit', (code) => {
-      console.warn(
-        `[lsp:${this.language}] server exited with code ${code}`,
-      );
+      console.warn(`[lsp:${this.language}] server exited with code ${code}`);
       this.ready = false;
       this.connection?.dispose();
       this.connection = null;
@@ -180,10 +178,7 @@ export class LspClient {
     return await this.connection!.sendRequest('textDocument/rename', params);
   }
 
-  async hover(
-    filePath: string,
-    position: Position,
-  ): Promise<Hover | null> {
+  async hover(filePath: string, position: Position): Promise<Hover | null> {
     if (!this.supportsHover()) return null;
     await this.ensureOpen(filePath);
     return await this.connection!.sendRequest('textDocument/hover', {

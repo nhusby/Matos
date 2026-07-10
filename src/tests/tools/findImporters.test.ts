@@ -2,7 +2,7 @@ import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { findImporters } from '../../src/lib/tools/findImporters.js';
+import { findImporters } from '../../lib/tools/findImporters';
 
 let tmpDir: string;
 
@@ -17,14 +17,8 @@ afterEach(async () => {
 test('findImporters: finds TS files that import a target by stem', async () => {
   const targetPath = join(tmpDir, 'target.ts');
   await writeFile(targetPath, 'export const thing = 1;');
-  await writeFile(
-    join(tmpDir, 'a.ts'),
-    `import { thing } from './target';`,
-  );
-  await writeFile(
-    join(tmpDir, 'b.ts'),
-    `import { thing } from './target';`,
-  );
+  await writeFile(join(tmpDir, 'a.ts'), `import { thing } from './target';`);
+  await writeFile(join(tmpDir, 'b.ts'), `import { thing } from './target';`);
   await writeFile(
     join(tmpDir, 'unrelated.ts'),
     `import { other } from './other';`,
@@ -61,10 +55,7 @@ test('findImporters: matches different file extension import paths', async () =>
   const targetPath = join(tmpDir, 'target.ts');
   await writeFile(targetPath, 'export const thing = 1;');
   // Even without extension, the stem 'target' should match
-  await writeFile(
-    join(tmpDir, 'c.ts'),
-    `import { thing } from './target';`,
-  );
+  await writeFile(join(tmpDir, 'c.ts'), `import { thing } from './target';`);
   const importers = await findImporters(targetPath, tmpDir);
   expect(importers).toHaveLength(1);
 });
@@ -75,10 +66,7 @@ test('findImporters: handles Go imports', async () => {
   // Go imports reference by package name, not file. Within a single
   // project we don't have inter-package imports in the same dir, so
   // we just verify no false positives across languages.
-  await writeFile(
-    join(tmpDir, 'main.go'),
-    `package main\nimport "fmt"\n`,
-  );
+  await writeFile(join(tmpDir, 'main.go'), `package main\nimport "fmt"\n`);
   const importers = await findImporters(targetPath, tmpDir);
   expect(importers).toHaveLength(0);
 });

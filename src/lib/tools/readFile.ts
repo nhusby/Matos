@@ -2,7 +2,11 @@ import { readFile } from 'fs/promises';
 import { resolve } from 'path';
 import type { Tool } from '../Agent';
 
-export const readFileTool: Tool = {
+export interface ReadFileConfig {
+  bypassCwd?: boolean;
+}
+
+export const createReadFileTool = (config: ReadFileConfig = {}): Tool => ({
   name: 'ReadFile',
   description: 'Read the contents of a file at the given path.',
   ttl: 3,
@@ -13,5 +17,11 @@ export const readFileTool: Tool = {
     },
     required: ['path'],
   },
-  callback: async ({ path }) => readFile(resolve(path), 'utf-8'),
-};
+  callback: async ({ path }) => {
+    const resolved = resolve(path);
+    if (!config.bypassCwd && !resolved.startsWith(process.cwd())) {
+      return 'Error: path is outside the current working directory.';
+    }
+    return readFile(resolved, 'utf-8');
+  },
+});

@@ -6,7 +6,7 @@ import {
   pickRenameBackend,
   pickSignaturesBackend,
   applyRenameResult,
-} from '../../src/lib/lsp/backends.js';
+} from '../../lib/lsp/backends';
 
 let tmpDir: string;
 
@@ -53,8 +53,9 @@ test('pickRenameBackend: throws on unsupported extension', () => {
 
 test('pickRenameBackend: LSP backend returns unavailable error when no server running', async () => {
   const backend = pickRenameBackend(join(tmpDir, 'a.go'));
-  await expect(backend.findEdits(join(tmpDir, 'a.go'), 1, 'foo', 'bar'))
-    .rejects.toThrow(/not running/);
+  await expect(
+    backend.findEdits(join(tmpDir, 'a.go'), 1, 'foo', 'bar'),
+  ).rejects.toThrow(/not running/);
 });
 
 // ============================================================
@@ -86,9 +87,7 @@ test('applyRenameResult: applies single edit', async () => {
   const filePath = join(tmpDir, 'a.ts');
   await writeFile(filePath, 'const foo = 1;');
   const summary = await applyRenameResult({
-    byFile: new Map([
-      [filePath, [{ start: 6, length: 3, newText: 'bar' }]],
-    ]),
+    byFile: new Map([[filePath, [{ start: 6, length: 3, newText: 'bar' }]]]),
   });
   expect(await readFile(filePath, 'utf-8')).toBe('const bar = 1;');
   expect(summary).toEqual([`1 occurrence(s) in ${filePath}`]);
@@ -120,10 +119,13 @@ test('applyRenameResult: applies edits across multiple files', async () => {
   await applyRenameResult({
     byFile: new Map([
       [f1, [{ start: 0, length: 3, newText: 'bar' }]],
-      [f2, [
-        { start: 0, length: 3, newText: 'bar' },
-        { start: 4, length: 3, newText: 'bar' },
-      ]],
+      [
+        f2,
+        [
+          { start: 0, length: 3, newText: 'bar' },
+          { start: 4, length: 3, newText: 'bar' },
+        ],
+      ],
     ]),
   });
   expect(await readFile(f1, 'utf-8')).toBe('bar');

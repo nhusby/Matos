@@ -2,7 +2,7 @@ import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, writeFile, mkdir, stat } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { renameFileTool } from '../../src/lib/tools/renameFile.js';
+import { renameFileTool } from '../../lib/tools/renameFile';
 
 let tmpDir: string;
 let originalCwd: string;

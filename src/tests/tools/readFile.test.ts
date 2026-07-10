@@ -2,9 +2,11 @@ import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { readFileTool } from '../../src/lib/tools/readFile.js';
+import { createReadFileTool } from '../../lib/tools/readFile';
 
 let tmpDir: string;
+
+const readFileTool = createReadFileTool({ bypassCwd: true });
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(join(tmpdir(), 'matos-readfile-'));
@@ -29,10 +31,18 @@ test('readFile: returns empty string for empty file', async () => {
 test('readFile: reads multi-line content', async () => {
   const path = join(tmpDir, 'multi.txt');
   await writeFile(path, 'line1\nline2\nline3');
-  expect(await readFileTool.callback!({ path } as any)).toBe('line1\nline2\nline3');
+  expect(await readFileTool.callback!({ path } as any)).toBe(
+    'line1\nline2\nline3',
+  );
 });
 
 test('readFile: rejects when file does not exist', async () => {
   const path = join(tmpDir, 'nope.txt');
   await expect(readFileTool.callback!({ path } as any)).rejects.toThrow();
+});
+
+test('readFile: blocks paths outside cwd when bypassCwd is false', async () => {
+  const restricted = createReadFileTool();
+  const out = await restricted.callback!({ path: '/etc/hostname' } as any);
+  expect(out).toBe('Error: path is outside the current working directory.');
 });

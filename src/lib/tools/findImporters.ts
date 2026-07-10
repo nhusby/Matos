@@ -13,7 +13,10 @@ function fileStem(fileName: string): string {
 function matchesTarget(source: string, targetStem: string): boolean {
   if (!source) return false;
   const tail = source.split('/').pop() ?? source;
-  const cleanTail = tail.replace(/\.(ts|tsx|js|jsx|mjs|cjs|go|py|pl|pm|t)$/i, '');
+  const cleanTail = tail.replace(
+    /\.(ts|tsx|js|jsx|mjs|cjs|go|py|pl|pm|t)$/i,
+    '',
+  );
   return cleanTail === targetStem || tail === targetStem;
 }
 
@@ -53,7 +56,9 @@ export async function findImporters(
         try {
           const content = await readFile(fullPath, 'utf-8');
           const imports = scanImports(fullPath, content);
-          const hits = imports.filter((imp) => matchesTarget(imp.source, targetStem));
+          const hits = imports.filter((imp) =>
+            matchesTarget(imp.source, targetStem),
+          );
           if (hits.length) {
             const rel = relative(root, fullPath);
             const preview = hits[0]!.source.slice(0, 80);

@@ -2,7 +2,7 @@ import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, readFile, readdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { ConversationLogger } from '../../src/lib/ConversationLogger.js';
+import { ConversationLogger } from '../../lib/ConversationLogger';
 
 let tmpDir: string;
 
@@ -33,7 +33,11 @@ test('ConversationLogger: writes a JSONL line per log() call', async () => {
 test('ConversationLogger: appends multiple messages to the same file', async () => {
   const logger = new ConversationLogger(tmpDir);
   logger.log({ role: 'user', content: 'first', created: new Date() } as any);
-  logger.log({ role: 'assistant', content: 'second', created: new Date() } as any);
+  logger.log({
+    role: 'assistant',
+    content: 'second',
+    created: new Date(),
+  } as any);
 
   const lines = (await readFile(logger.filePath, 'utf-8'))
     .split('\n')
@@ -67,7 +71,12 @@ test('ConversationLogger: serializes parts with tool calls', async () => {
         content: 'let me check',
         toolCalls: [{ id: 'call_1', name: 'ReadFile', params: { path: '/x' } }],
       },
-      { role: 'tool', name: 'ReadFile', content: 'result', toolCallId: 'call_1' },
+      {
+        role: 'tool',
+        name: 'ReadFile',
+        content: 'result',
+        toolCallId: 'call_1',
+      },
     ],
     created: new Date(),
   } as any);

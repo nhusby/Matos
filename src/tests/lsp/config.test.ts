@@ -2,7 +2,11 @@ import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { loadLspConfig, serverForLanguage, DEFAULT_SERVERS } from '../../src/lib/lsp/config.js';
+import {
+  loadLspConfig,
+  serverForLanguage,
+  DEFAULT_SERVERS,
+} from '../../lib/lsp/config';
 
 let tmpDir: string;
 
