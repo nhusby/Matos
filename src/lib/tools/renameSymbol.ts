@@ -33,10 +33,10 @@ export const renameSymbolTool: Tool = {
   callback: async ({ path, name, occurrence, newName }) => {
     const filePath = resolve(path);
     const n = occurrence ?? 1;
-    const backend = pickRenameBackend(filePath);
 
     let result;
     try {
+      const backend = pickRenameBackend(filePath);
       result = await backend.findEdits(filePath, n, name, newName);
     } catch (e: any) {
       return `Error: ${e.message}`;

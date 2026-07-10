@@ -1,9 +1,9 @@
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
-import { resolve } from 'path';
+import { join } from 'path';
 import type { Agent } from './Agent';
 
 const HISTORY_DIR = '.doofy';
-const HISTORY_FILE = resolve(HISTORY_DIR, 'history.json');
+const HISTORY_FILE = join(HISTORY_DIR, 'history.json');
 
 function serializeMessage(msg: any): any {
   const parts = msg.parts?.map((part: any) => {

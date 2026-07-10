@@ -4,7 +4,7 @@ import { homedir } from 'os';
 import { resolve } from 'path';
 import type { Agent, Message } from './Agent.js';
 
-const LOG_DIR = resolve(homedir(), '.matos', 'logs');
+const DEFAULT_LOG_DIR = resolve(homedir(), '.matos', 'logs');
 
 export interface ConversationLoggerEntry {
   conversationId: string;
@@ -34,17 +34,17 @@ function serializePart(part: any): Record<string, unknown> {
 
 /**
  * Appends each message in a conversation as a JSON line to
- * `~/.matos/logs/<uuid>.jsonl`. Each conversation instance is
- * assigned a unique UUID automatically.
+ * `~/.matos/logs/<uuid>.jsonl` (or `logDir/<uuid>.jsonl` if overridden).
+ * Each conversation instance is assigned a unique UUID automatically.
  */
 export class ConversationLogger {
   readonly conversationId: string;
   private readonly logFile: string;
 
-  constructor() {
+  constructor(logDir: string = DEFAULT_LOG_DIR) {
     this.conversationId = v7();
-    mkdirSync(LOG_DIR, { recursive: true });
-    this.logFile = resolve(LOG_DIR, `${this.conversationId}.jsonl`);
+    mkdirSync(logDir, { recursive: true });
+    this.logFile = resolve(logDir, `${this.conversationId}.jsonl`);
   }
 
   /** Returns the path to the JSONL log file for this conversation. */
