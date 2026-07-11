@@ -185,7 +185,7 @@ export class Agent extends Emitter<AgentEvents> {
       await emitter.emit('finalizing', response);
       await emitter.emit('end', response);
     } catch (e: any) {
-      if (e?.name === 'AbortError') {
+      if (e?.name === 'AbortError' || e?.name === 'APIUserAbortError') {
         await emitter.emit('aborted', response);
         return;
       }
@@ -217,7 +217,6 @@ export class Agent extends Emitter<AgentEvents> {
 
     const params = {
       stream: true as const,
-      signal: emitter.abortController.signal,
       model: this.model,
       messages: openAiMessages,
       ...(this.tools.length
@@ -235,6 +234,7 @@ export class Agent extends Emitter<AgentEvents> {
     };
     const stream = await this.api.chat.completions.create(
       params as OpenAI.ChatCompletionCreateParamsStreaming,
+      { signal: emitter.abortController.signal },
     );
     this.apiIndex = (this.apiIndex + 1) % this.apis.length;
 
@@ -311,7 +311,10 @@ export class Agent extends Emitter<AgentEvents> {
         }
       }
     } catch (e: any) {
-      if (e?.name === 'AbortError') {
+      if (
+        e?.name === 'AbortError' ||
+        e?.name === 'APIUserAbortError'
+      ) {
         throw e;
       }
       emitter.abortController.abort();
