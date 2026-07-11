@@ -9,5 +9,6 @@ export { createTextSearchTool } from './textSearch';
 export { findImporters } from './findImporters';
 export { deleteFileTool } from './deleteFile';
 export { renameFileTool } from './renameFile';
+export { createBashTool, type BashToolConfig } from './bash';
 export { createSemanticSearchTool } from '../codeRag/semanticSearchTool';
 export { CodeIndex } from '../codeRag/codeIndex';

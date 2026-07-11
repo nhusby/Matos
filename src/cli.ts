@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import OpenAI from 'openai';
-import { ToolPart } from './lib/Agent';
+import { ToolPart, type ToolCall } from './lib/Agent';
 import { Emitter } from './lib/Emitter';
 import { createAgent } from './agents/matos';
 import type { CodeIndex } from './lib/tools';
@@ -57,6 +57,21 @@ async function main() {
     .catch((e) =>
       process.stderr.write(`[lsp] startup error: ${e?.message ?? e}\n`),
     );
+
+  agent.on('tool-call', async (toolCall: ToolCall) => {
+    if (toolCall.name !== 'RunBashCommand') return;
+
+    const input = await editor.question(
+      `${RESET}\nMatos wants to run this command: ${toolCall.params.command}\n`,
+      'Approve [Y]/N/Comment: ',
+    );
+
+    const trimmed = input.trim();
+    if (!trimmed || /^y(?:es)?$/i.test(trimmed)) return;
+    if (/^no?$/i.test(trimmed))
+      throw new Error('[REJECTED] User rejected the tool call');
+    throw new Error(`[REJECTED] ${trimmed}`);
+  });
 
   let currentRun: Emitter | null = null;
   let busy = false;
@@ -115,7 +130,7 @@ async function main() {
     try {
       await currentRun.toPromise();
     } catch (e: any) {
-      if (e?.name === 'AbortError') {
+      if (e?.name === 'AbortError' || e?.name === 'APIUserAbortError') {
         process.stdout.write('\n[aborted]\n');
       } else {
         process.stderr.write(`\n[error: ${e?.stack ?? e?.message ?? e}]\n`);

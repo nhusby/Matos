@@ -45,7 +45,7 @@ export interface MultiLineEditorOptions {
 export class MultiLineEditor extends EventEmitter {
   private readonly input: NodeJS.ReadStream;
   private readonly output: NodeJS.WriteStream;
-  private readonly promptStr: string;
+  private promptStr: string;
   private readonly continuationStr: string;
 
   private lines: string[] = [''];
@@ -54,6 +54,9 @@ export class MultiLineEditor extends EventEmitter {
   private active = false;
   private renderedRows = 0;
   private cursorScreenRow = 0;
+
+  private questionResolve: ((line: string) => void) | null = null;
+  private questionOriginalPrompt: string | null = null;
 
   private readonly keypressHandler: (str: string, key: Key) => void;
   private readonly resizeHandler: () => void;
@@ -102,6 +105,28 @@ export class MultiLineEditor extends EventEmitter {
     if (this.active) {
       this.render();
     }
+  }
+
+  /**
+   * Write *text*, then collect a single line of input using *prompt* as the
+   * prompt string.  Resolves with the submitted line.  While active, the
+   * normal 'line' event is suppressed so CLI input handlers don't fire.
+   * Escape resolves with 'n' (treated as rejection by callers).
+   */
+  question(text: string, prompt?: string): Promise<string> {
+    this.clearRendered();
+    this.output.write(text);
+
+    if (prompt !== undefined) {
+      this.questionOriginalPrompt = this.promptStr;
+      this.promptStr = prompt;
+    }
+
+    this.prompt();
+
+    return new Promise<string>((resolve) => {
+      this.questionResolve = resolve;
+    });
   }
 
   /** Teardown — restore cooked mode, remove listeners. */
@@ -199,7 +224,19 @@ export class MultiLineEditor extends EventEmitter {
       return;
     }
     if (key.name === 'escape') {
-      this.emit('escape');
+      if (this.questionResolve) {
+        const resolve = this.questionResolve;
+        this.questionResolve = null;
+        if (this.questionOriginalPrompt !== null) {
+          this.promptStr = this.questionOriginalPrompt;
+          this.questionOriginalPrompt = null;
+        }
+        this.active = false;
+        this.clearRendered();
+        resolve('n');
+      } else {
+        this.emit('escape');
+      }
       return;
     }
 
@@ -344,7 +381,18 @@ export class MultiLineEditor extends EventEmitter {
     this.lines = [''];
     this.row = 0;
     this.col = 0;
-    this.emit('line', text);
+
+    if (this.questionResolve) {
+      const resolve = this.questionResolve;
+      this.questionResolve = null;
+      if (this.questionOriginalPrompt !== null) {
+        this.promptStr = this.questionOriginalPrompt;
+        this.questionOriginalPrompt = null;
+      }
+      resolve(text);
+    } else {
+      this.emit('line', text);
+    }
   }
 
   private insertChar(ch: string): void {

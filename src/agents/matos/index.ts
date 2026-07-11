@@ -15,6 +15,7 @@ import {
   deleteFileTool,
   createListFilesTool,
   createTextSearchTool,
+  createBashTool,
   createSemanticSearchTool,
   CodeIndex,
   buildFileTree,
@@ -47,6 +48,7 @@ export async function createAgent(config: DevAgentConfig): Promise<Agent> {
       createTextSearchTool(),
       deleteFileTool,
       renameFileTool,
+      createBashTool({ timeout: 60_000 }),
     ],
     systemPrompt,
   }).init();
