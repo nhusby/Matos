@@ -78,6 +78,22 @@ export class CodeIndex {
     this.hashCachePath = join(indexDir, 'hash-cache.json');
   }
 
+  /**
+   * Release the ONNX Runtime inference session held by the embeddings model.
+   * Without this, native threads stay alive and cause
+   * "mutex lock failed: Invalid argument" crashes when the process exits.
+   */
+  async dispose(): Promise<void> {
+    const embeddings = this.config.embeddings as any;
+    try {
+      // _extractor is the transformers.js pipeline callable (a Pipeline instance)
+      // Pipeline.dispose() calls model.dispose() which releases each ONNX session
+      await embeddings?._extractor?.dispose?.();
+    } catch {
+      // best-effort — the session may already be gone
+    }
+  }
+
   async init(): Promise<void> {
     if (!(await this.index.isIndexCreated())) {
       await this.index.createIndex({

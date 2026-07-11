@@ -61,10 +61,30 @@ async function main() {
   agent.on('tool-call', async (toolCall: ToolCall) => {
     if (toolCall.name !== 'RunBashCommand') return;
 
-    const input = await editor.question(
-      `${RESET}\nMatos wants to run this command: ${toolCall.params.command}\n`,
-      'Approve [Y]/N/Comment: ',
-    );
+    const APPROVAL_TIMEOUT = 60_000;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const input = await Promise.race<string>([
+      editor.question(
+        `${RESET}\nMatos wants to run this command: ${toolCall.params.command}\n`,
+        'Approve [Y]/N/Comment: ',
+      ),
+      new Promise<string>((resolve) => {
+        timer = setTimeout(
+          () => resolve('__APPROVAL_TIMEOUT__'),
+          APPROVAL_TIMEOUT,
+        );
+      }),
+    ]);
+
+    clearTimeout(timer!);
+
+    if (input === '__APPROVAL_TIMEOUT__') {
+      editor.cancelQuestion('');
+      throw new Error(
+        '[REJECTED] Command approval timeout.  No user response.',
+      );
+    }
 
     const trimmed = input.trim();
     if (!trimmed || /^y(?:es)?$/i.test(trimmed)) return;
@@ -170,11 +190,28 @@ async function main() {
       ]);
     }
 
-    // Let the event loop drain naturally so native backends (TLS,
-    // ONNX Runtime, etc.) can clean up their threads without racing
-    // a forced exit.  process.exit() is only a last-resort fallback.
-    process.exitCode = exitCode;
-    setTimeout(() => process.exit(exitCode), 2000).unref();
+    // Dispose of the ONNX Runtime inference session so its native threads
+    // are torn down cleanly.  Without this, process.exit()
+    // races with live threads and crashes with
+    // "mutex lock failed: Invalid argument".
+    if (codeIndex) {
+      try {
+        await Promise.race([
+          codeIndex.dispose(),
+          new Promise((r) => setTimeout(r, 3000)),
+        ]);
+      } catch (e: any) {
+        process.stderr.write(
+          `[codeIndex] dispose error: ${e?.message ?? e}\n`,
+        );
+      }
+    }
+
+    // Use SIGKILL to skip native C++ cleanup that causes the
+    // "mutex lock failed: Invalid argument" crash in ONNX Runtime.
+    // SIGKILL cannot be caught and immediately terminates the process
+    // without running destructors or atexit handlers.
+    process.kill(process.pid, 'SIGKILL');
   }
 
   editor.on('escape', () => {

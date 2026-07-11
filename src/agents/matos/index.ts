@@ -25,7 +25,13 @@ import { systemPrompt } from './system-prompt.js';
 // Force single-threaded ONNX execution.  Multi-threaded ORT spawns
 // native pthreads that race with process.exit() during shutdown,
 // causing "mutex lock failed: Invalid argument" crashes.
-env.backends.onnx.wasm!.numThreads = 1;
+// NOTE: onnxruntime-node ignores wasm.* settings; these only apply
+// to onnxruntime-web. Shutdown uses SIGKILL as a reliable fix.
+try {
+  env.backends.onnx.wasm!.numThreads = 1;
+} catch {
+  // env.backends.onnx.wasm may not exist in all environments
+}
 
 export interface DevAgentConfig {
   api: Api;

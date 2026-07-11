@@ -129,6 +129,24 @@ export class MultiLineEditor extends EventEmitter {
     });
   }
 
+  /**
+   * Programmatically cancel any active question.  Resolves the pending
+   * question promise with *value*, restores the original prompt, and
+   * deactivates input.  No-op when no question is active.
+   */
+  cancelQuestion(value: string): void {
+    if (!this.questionResolve) return;
+    const resolve = this.questionResolve;
+    this.questionResolve = null;
+    if (this.questionOriginalPrompt !== null) {
+      this.promptStr = this.questionOriginalPrompt;
+      this.questionOriginalPrompt = null;
+    }
+    this.active = false;
+    this.clearRendered();
+    resolve(value);
+  }
+
   /** Teardown — restore cooked mode, remove listeners. */
   close(): void {
     this.input.removeListener('keypress', this.keypressHandler);
