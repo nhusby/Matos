@@ -7,6 +7,11 @@ import type { CodeIndex } from './lib/tools';
 import { MultiLineEditor } from './lib/MultiLineEditor';
 import { saveHistory, loadHistory } from './lib/HistoryManager.js';
 import { lspManager } from './lib/lsp/manager.js';
+import {
+  loadMcpConfig,
+  McpManager,
+  createEnableTool,
+} from './lib/mcp/index.js';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -44,29 +49,20 @@ async function main() {
   }) as any;
   const model = ['Qwen3.6-35B-A3B', 'glm-5.1', 'glm-5-turbo', 'gpt-5-mini'];
   let codeIndex: CodeIndex | undefined;
-  const agent = await createAgent({
-    api,
-    model,
-    onCodeIndexReady: (ci) => {
-      codeIndex = ci;
-    },
-  });
+  const APPROVAL_TIMEOUT = 60_000;
 
-  lspManager
-    .startDetected(process.cwd())
-    .catch((e) =>
-      process.stderr.write(`[lsp] startup error: ${e?.message ?? e}\n`),
-    );
-
-  agent.on('tool-call', async (toolCall: ToolCall) => {
-    if (toolCall.name !== 'RunBashCommand') return;
-
-    const APPROVAL_TIMEOUT = 60_000;
+  async function approveToolCall(toolCall: ToolCall, label: string) {
     let timer: ReturnType<typeof setTimeout>;
+
+    const detail = toolCall.params.command
+      ? `: ${toolCall.params.command}`
+      : Object.keys(toolCall.params).length
+        ? ` with: ${JSON.stringify(toolCall.params).slice(0, 200)}`
+        : '';
 
     const input = await Promise.race<string>([
       editor.question(
-        `${RESET}\nMatos wants to run this command: ${toolCall.params.command}\n`,
+        `${RESET}\nMatos wants to use ${label}${detail}\n`,
         'Approve [Y]/N/Comment: ',
       ),
       new Promise<string>((resolve) => {
@@ -82,7 +78,7 @@ async function main() {
     if (input === '__APPROVAL_TIMEOUT__') {
       editor.cancelQuestion('');
       throw new Error(
-        '[REJECTED] Command approval timeout.  No user response.',
+        '[REJECTED] Tool approval timeout.  No user response.',
       );
     }
 
@@ -91,7 +87,59 @@ async function main() {
     if (/^no?$/i.test(trimmed))
       throw new Error('[REJECTED] User rejected the tool call');
     throw new Error(`[REJECTED] ${trimmed}`);
+  }
+
+  const agent = await createAgent({
+    api,
+    model,
+    onCodeIndexReady: (ci) => {
+      codeIndex = ci;
+    },
   });
+
+  lspManager
+    .startDetected(process.cwd())
+    .catch((e) =>
+      process.stderr.write(`[lsp] startup error: ${e?.message ?? e}\n`),
+    );
+
+  agent.on('tool-call', async (toolCall: ToolCall) => {
+    const tool = agent.tools.find((t) => t.name === toolCall.name);
+    if (tool?.requiresApproval) {
+      await approveToolCall(toolCall, 'tool-call');
+    }
+  });
+
+  // Initialize MCP (Model Context Protocol) servers
+  loadMcpConfig()
+    .then(async (mcpConfig) => {
+      const mcpManager = new McpManager();
+      await mcpManager.init(mcpConfig);
+
+      if (mcpManager.hasTools()) {
+        // Auto-enable tools flagged with `enabled` in config
+        const autoEnabled = mcpManager.getAutoEnabledTools();
+        for (const tool of autoEnabled) {
+          agent.tools.push(mcpManager.createAgentTool(tool));
+        }
+
+        // EnableTool for remaining (non-auto-enabled) tools
+        const enableable = mcpManager
+          .getDiscoveredTools()
+          .filter((t) => !mcpManager.isAutoEnabled(t.fullName));
+        if (enableable.length > 0) {
+          const enableTool = createEnableTool({
+            manager: mcpManager,
+            tools: agent.tools,
+            exclude: new Set(autoEnabled.map((t) => t.fullName)),
+          });
+          agent.tools.push(enableTool);
+        }
+      }
+    })
+    .catch((err) => {
+      process.stderr.write(`[mcp] initialization error: ${err?.message ?? err}\n`);
+    });
 
   let currentRun: Emitter | null = null;
   let busy = false;

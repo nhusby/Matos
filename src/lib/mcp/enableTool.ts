@@ -6,6 +6,8 @@ export interface EnableToolConfig {
   manager: McpManager;
   /** The agent's tools array to push enabled tools into */
   tools: Tool[];
+  /** Tool fullNames to exclude from the enum (e.g. auto-enabled tools) */
+  exclude?: Set<string>;
 }
 
 /**
@@ -15,8 +17,10 @@ export interface EnableToolConfig {
  * the agent's tools array, making it available for all subsequent turns.
  */
 export function createEnableTool(config: EnableToolConfig): Tool {
-  const { manager, tools } = config;
-  const discovered = manager.getDiscoveredTools();
+  const { manager, tools, exclude } = config;
+  const discovered = manager
+    .getDiscoveredTools()
+    .filter((t) => !exclude?.has(t.fullName));
 
   const toolNames = discovered.map((t) => t.fullName);
 

@@ -21,6 +21,18 @@ export interface McpServerConfig {
   url?: string;
   /** HTTP/SSE: custom headers to send with requests. */
   headers?: Record<string, string>;
+  /**
+   * Auto-enable tools from this server during agent init.
+   * - `true`: enable all tools
+   * - `string[]`: enable only these tools by original name
+   */
+  enabled?: boolean | string[];
+  /**
+   * Require user approval before invoking tools from this server.
+   * - `true`: all tools require approval
+   * - `string[]`: only these tools (by original name) require approval
+   */
+  approvalRequired?: boolean | string[];
 }
 
 export type McpServerMap = Record<string, McpServerConfig>;

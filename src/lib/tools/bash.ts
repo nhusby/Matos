@@ -17,6 +17,7 @@ export const createBashTool = (config: BashToolConfig = {}): Tool => ({
     'Run a bash command and return stdout, stderr, and exit code.  Do not use with interactive commands',
   ttl: 3,
   summarize: true,
+  requiresApproval: true,
   params: {
     type: 'object',
     properties: {

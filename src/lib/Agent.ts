@@ -8,6 +8,7 @@ export interface Tool {
   callback: (params: any) => Promise<string>;
   ttl?: number;
   summarize?: boolean;
+  requiresApproval?: boolean;
 }
 export interface ToolCall {
   id: string;

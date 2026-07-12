@@ -20,12 +20,6 @@ import {
   CodeIndex,
   buildFileTree,
 } from '../../lib/tools';
-import {
-  loadMcpConfig,
-  McpManager,
-  createEnableTool,
-  type DiscoveredMcpTool,
-} from '../../lib/mcp/index.js';
 import { systemPrompt } from './system-prompt.js';
 
 // Force single-threaded ONNX execution.  Multi-threaded ORT spawns
@@ -44,8 +38,6 @@ export interface DevAgentConfig {
   model: string | string[];
   onCodeIndexReady?: (codeIndex: CodeIndex) => void;
   onCodeIndexError?: (err: Error) => void;
-  onMcpReady?: (tools: DiscoveredMcpTool[]) => void;
-  onMcpError?: (err: Error) => void;
 }
 
 export async function createAgent(config: DevAgentConfig): Promise<Agent> {
@@ -140,26 +132,6 @@ export async function createAgent(config: DevAgentConfig): Promise<Agent> {
     })
     .catch((err) => {
       config.onCodeIndexError?.(err);
-    });
-
-  // Initialize MCP (Model Context Protocol) servers
-  loadMcpConfig()
-    .then(async (mcpConfig) => {
-      const mcpManager = new McpManager();
-      await mcpManager.init(mcpConfig);
-
-      if (mcpManager.hasTools()) {
-        const discovered = mcpManager.getDiscoveredTools();
-        const enableTool = createEnableTool({
-          manager: mcpManager,
-          tools: agent.tools,
-        });
-        agent.tools.push(enableTool);
-        config.onMcpReady?.(discovered);
-      }
-    })
-    .catch((err) => {
-      config.onMcpError?.(err);
     });
 
   return agent;

@@ -33,6 +33,10 @@ interface ServerConnection {
 export class McpManager {
   private connections = new Map<string, ServerConnection>();
   private discovered: DiscoveredMcpTool[] = [];
+  /** Tool fullNames that require user approval before invocation */
+  private approvalRequiredSet = new Set<string>();
+  /** Tool fullNames that should be auto-enabled during init */
+  private autoEnabledSet = new Set<string>();
 
   /**
    * Connect to every server defined in `config` and discover their tools.
@@ -49,6 +53,7 @@ export class McpManager {
     );
 
     this.buildDiscoveredTools();
+    this.processConfigFlags(config);
   }
 
   private async connectServer(
@@ -113,6 +118,35 @@ export class McpManager {
     }
   }
 
+  /**
+   * Parse `enabled` and `approvalRequired` flags from each server config
+   * and populate the corresponding Sets with resolved tool fullNames.
+   */
+  private processConfigFlags(config: McpConfig): void {
+    for (const tool of this.discovered) {
+      const serverConfig = config.mcpServers[tool.serverName];
+      if (!serverConfig) continue;
+
+      // Resolve approvalRequired
+      if (serverConfig.approvalRequired === true) {
+        this.approvalRequiredSet.add(tool.fullName);
+      } else if (Array.isArray(serverConfig.approvalRequired)) {
+        if (serverConfig.approvalRequired.includes(tool.name)) {
+          this.approvalRequiredSet.add(tool.fullName);
+        }
+      }
+
+      // Resolve enabled
+      if (serverConfig.enabled === true) {
+        this.autoEnabledSet.add(tool.fullName);
+      } else if (Array.isArray(serverConfig.enabled)) {
+        if (serverConfig.enabled.includes(tool.name)) {
+          this.autoEnabledSet.add(tool.fullName);
+        }
+      }
+    }
+  }
+
   /** All tools discovered across all connected servers. */
   getDiscoveredTools(): DiscoveredMcpTool[] {
     return this.discovered;
@@ -121,6 +155,21 @@ export class McpManager {
   /** Whether any tools were discovered. */
   hasTools(): boolean {
     return this.discovered.length > 0;
+  }
+
+  /** Whether a tool (by fullName) requires user approval before invocation. */
+  requiresApproval(fullName: string): boolean {
+    return this.approvalRequiredSet.has(fullName);
+  }
+
+  /** Whether a tool (by fullName) is auto-enabled from config. */
+  isAutoEnabled(fullName: string): boolean {
+    return this.autoEnabledSet.has(fullName);
+  }
+
+  /** All discovered tools that should be auto-enabled per config. */
+  getAutoEnabledTools(): DiscoveredMcpTool[] {
+    return this.discovered.filter((t) => this.autoEnabledSet.has(t.fullName));
   }
 
   /**
@@ -137,6 +186,7 @@ export class McpManager {
       },
       ttl: 3,
       summarize: true,
+      requiresApproval: this.approvalRequiredSet.has(discovered.fullName),
       callback: async (params: any) => {
         const conn = this.connections.get(discovered.serverName);
         if (!conn) {
@@ -179,6 +229,8 @@ export class McpManager {
     );
     this.connections.clear();
     this.discovered = [];
+    this.approvalRequiredSet.clear();
+    this.autoEnabledSet.clear();
   }
 }
 
