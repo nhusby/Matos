@@ -1,5 +1,7 @@
 /.idea/
 /.claude/
 /.code-rag-index/
+/.matos/
+/.doofy/
 /node_modules/
 .env

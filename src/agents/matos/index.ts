@@ -20,6 +20,12 @@ import {
   CodeIndex,
   buildFileTree,
 } from '../../lib/tools';
+import {
+  loadMcpConfig,
+  McpManager,
+  createEnableTool,
+  type DiscoveredMcpTool,
+} from '../../lib/mcp/index.js';
 import { systemPrompt } from './system-prompt.js';
 
 // Force single-threaded ONNX execution.  Multi-threaded ORT spawns
@@ -38,6 +44,8 @@ export interface DevAgentConfig {
   model: string | string[];
   onCodeIndexReady?: (codeIndex: CodeIndex) => void;
   onCodeIndexError?: (err: Error) => void;
+  onMcpReady?: (tools: DiscoveredMcpTool[]) => void;
+  onMcpError?: (err: Error) => void;
 }
 
 export async function createAgent(config: DevAgentConfig): Promise<Agent> {
@@ -62,6 +70,7 @@ export async function createAgent(config: DevAgentConfig): Promise<Agent> {
   new ConversationLogger().attach(agent);
 
   agent.on('send-message', async () => {
+    // Prune stale file paths (deleted since last read)
     for (const path of agent.readFiles) {
       try {
         await access(resolve(path));
@@ -69,38 +78,37 @@ export async function createAgent(config: DevAgentConfig): Promise<Agent> {
         agent.readFiles.delete(path);
       }
     }
-    if (agent.readFiles.size === 0) return;
 
-    const fileContents = (
-      await Promise.all(
-        [...agent.readFiles].map(async (path) => {
-          const content = await readFile(resolve(path), 'utf-8').catch(
-            () => null,
-          );
-          return `<File path="${path}">\n\`\`\`typescript\n${content ?? '[file not readable]'}\n\`\`\`\n</File>`;
-        }),
-      )
-    ).join('\n');
-
+    // Inject file tree once per turn
+    const fileTree = await buildFileTree();
     agent.messages.push({
       role: 'system',
-      content: `<Files>\n${fileContents}\n</Files>`,
+      content: `Current working directory:\n ${fileTree}`,
       created: new Date(),
       ttl: 1,
     } as Message);
-  });
 
-  agent.on('send-messages', async (messages: Message[]) => {
-    const fileTree = await buildFileTree();
-    return [
-      ...messages.slice(0, 1),
-      {
+    // Inject cached file reads
+    if (agent.readFiles.size > 0) {
+      const fileContents = (
+        await Promise.all(
+          [...agent.readFiles].map(async (path) => {
+            const content = await readFile(resolve(path), 'utf-8').catch(
+              () => null,
+            );
+            return `<File path="${path}">\n\`\`\`typescript\n${content ?? '[file not readable]'}\n\`\`\`\n</File>`;
+          }),
+        )
+      ).join('\n');
+
+      agent.messages.push({
         role: 'system',
-        content: `Current working directory:\n ${fileTree}`,
+        content: `System cached file reads:
+<Files>\n${fileContents}\n</Files>`,
         created: new Date(),
-      },
-      ...messages.slice(1),
-    ];
+        ttl: 1,
+      } as Message);
+    }
   });
 
   agent.on('finalizing', async () => {
@@ -132,6 +140,26 @@ export async function createAgent(config: DevAgentConfig): Promise<Agent> {
     })
     .catch((err) => {
       config.onCodeIndexError?.(err);
+    });
+
+  // Initialize MCP (Model Context Protocol) servers
+  loadMcpConfig()
+    .then(async (mcpConfig) => {
+      const mcpManager = new McpManager();
+      await mcpManager.init(mcpConfig);
+
+      if (mcpManager.hasTools()) {
+        const discovered = mcpManager.getDiscoveredTools();
+        const enableTool = createEnableTool({
+          manager: mcpManager,
+          tools: agent.tools,
+        });
+        agent.tools.push(enableTool);
+        config.onMcpReady?.(discovered);
+      }
+    })
+    .catch((err) => {
+      config.onMcpError?.(err);
     });
 
   return agent;
