@@ -41,6 +41,10 @@ export interface MultiLineEditorOptions {
  *   Ctrl+C           emit 'sigint'
  *   Ctrl+D           emit 'close' (when empty)
  *   Escape           emit 'escape'
+ *
+ * Bracketed paste mode is enabled automatically.  Pasted content (anything
+ * between the terminal's \x1b[200~ ... \x1b[201~ markers) is inserted into
+ * the buffer verbatim — pasted newlines create line breaks and NEVER submit.
  */
 export class MultiLineEditor extends EventEmitter {
   private readonly input: NodeJS.ReadStream;
@@ -54,6 +58,12 @@ export class MultiLineEditor extends EventEmitter {
   private active = false;
   private renderedRows = 0;
   private cursorScreenRow = 0;
+
+  // Bracketed-paste state.  While `pasting` is true every newline is inserted
+  // rather than submitted, and `pastePendingLf` collapses a `\r\n` pair into a
+  // single line break.
+  private pasting = false;
+  private pastePendingLf = false;
 
   private questionResolve: ((line: string) => void) | null = null;
   private questionOriginalPrompt: string | null = null;
@@ -73,6 +83,13 @@ export class MultiLineEditor extends EventEmitter {
       (this.input as any).setRawMode(true);
     }
     this.input.resume();
+
+    // Enable bracketed paste mode so the terminal wraps pasted content in
+    // \x1b[200~ ... \x1b[201~ markers, letting us treat pasted newlines as
+    // line breaks instead of submit.
+    if (this.output.isTTY) {
+      this.output.write('\x1b[?2004h');
+    }
 
     this.keypressHandler = (str, key) => this.onKeypress(str, key);
     this.resizeHandler = () => {
@@ -149,6 +166,10 @@ export class MultiLineEditor extends EventEmitter {
 
   /** Teardown — restore cooked mode, remove listeners. */
   close(): void {
+    // Disable bracketed paste mode.
+    if (this.output.isTTY) {
+      this.output.write('\x1b[?2004l');
+    }
     this.input.removeListener('keypress', this.keypressHandler);
     this.output.removeListener('resize', this.resizeHandler);
     if (this.input.isTTY) {
@@ -241,6 +262,23 @@ export class MultiLineEditor extends EventEmitter {
       }
       return;
     }
+
+    // ── Bracketed-paste markers (terminal wraps pasted content in these) ──
+    // Between these markers newlines are inserted, never submitted.
+    if (key.name === 'paste-start') {
+      this.pasting = true;
+      this.pastePendingLf = false;
+      return;
+    }
+    if (key.name === 'paste-end') {
+      const wasPasting = this.pasting;
+      this.pasting = false;
+      this.pastePendingLf = false;
+      // Re-render once after the whole paste landed.
+      if (wasPasting && this.active) this.render();
+      return;
+    }
+
     if (key.name === 'escape') {
       if (this.questionResolve) {
         const resolve = this.questionResolve;
@@ -259,6 +297,35 @@ export class MultiLineEditor extends EventEmitter {
     }
 
     if (!this.active) return;
+
+    // ── Pasted content: insert verbatim, never submit ──
+    // Newlines within a paste become line breaks.  A `\r\n` pair arrives as
+    // two events (return, then enter); collapse it to a single line break.
+    if (this.pasting) {
+      if (key.name === 'return') {
+        this.insertNewline();
+        this.pastePendingLf = true;
+        return;
+      }
+      if (key.name === 'enter' || str === '\n') {
+        if (this.pastePendingLf) {
+          this.pastePendingLf = false;
+        } else {
+          this.insertNewline();
+        }
+        return;
+      }
+      // Any other key ends a possible `\r` run.
+      this.pastePendingLf = false;
+      if (str && !key.ctrl && !key.meta) {
+        const code = str.charCodeAt(0);
+        if (code >= 32 || str === '\t') {
+          this.insertChar(str);
+        }
+      }
+      // Defer rendering to paste-end for performance on large pastes.
+      return;
+    }
 
     // ── Submit ──
     if (key.name === 'return' && !key.meta && !key.shift) {
