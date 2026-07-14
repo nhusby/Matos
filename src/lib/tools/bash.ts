@@ -13,8 +13,7 @@ export interface BashToolConfig {
 
 export const createBashTool = (config: BashToolConfig = {}): Tool => ({
   name: 'RunBashCommand',
-  description:
-    'Run a bash command and return stdout, stderr, and exit code.  Do not use with interactive commands',
+  description: 'Run a bash command.  Do not use with interactive commands',
   ttl: 3,
   summarize: true,
   requiresApproval: true,

@@ -5,6 +5,7 @@ import { Emitter } from './lib/Emitter';
 import { createAgent } from './agents/matos';
 import type { CodeIndex } from './lib/tools';
 import { MultiLineEditor } from './lib/MultiLineEditor';
+import { MarkdownStreamRenderer } from './lib/markdownRenderer';
 import { saveHistory, loadHistory } from './lib/HistoryManager.js';
 import { lspManager } from './lib/lsp/manager.js';
 import {
@@ -106,6 +107,10 @@ async function main() {
   agent.on('tool-call', async (toolCall: ToolCall) => {
     const tool = agent.tools.find((t) => t.name === toolCall.name);
     if (tool?.requiresApproval) {
+      // Finalize any live markdown frame *before* the interactive approval
+      // prompt is drawn, otherwise a pending re-render could clobber the
+      // prompt (or leave it glued to a half-rendered frame).
+      activeRenderer?.flush();
       await approveToolCall(toolCall, 'tool-call');
     }
   });
@@ -143,6 +148,7 @@ async function main() {
 
   let currentRun: Emitter | null = null;
   let busy = false;
+  let activeRenderer: MarkdownStreamRenderer | null = null;
   const pending: string[] = [];
 
   async function persistHistory() {
@@ -160,8 +166,11 @@ async function main() {
       created: new Date(),
     });
     let reasoning = false;
+    const md = new MarkdownStreamRenderer(process.stdout);
+    activeRenderer = md;
 
     currentRun.on('reasoning-start', () => {
+      md.flush();
       reasoning = true;
       process.stdout.write(THINKING_YELLOW + '\n<thinking>\n');
     });
@@ -181,13 +190,14 @@ async function main() {
         reasoning = false;
         process.stdout.write(RESET + '\n');
       }
-      process.stdout.write(chunk);
+      md.push(chunk);
     });
     currentRun.on('tool-result', (tr: ToolPart) => {
       if (reasoning) {
         reasoning = false;
         process.stdout.write(RESET + '\n');
       }
+      md.flush();
       const pathInfo = tr.params?.path ? ` [${tr.params.path}]` : '';
       process.stdout.write(`\n## ToolCall ${tr.name}${pathInfo} Result:\n`);
       process.stdout.write(
@@ -198,6 +208,7 @@ async function main() {
     try {
       await currentRun.toPromise();
     } catch (e: any) {
+      md.flush();
       if (e?.name === 'AbortError' || e?.name === 'APIUserAbortError') {
         process.stdout.write('\n[aborted]\n');
       } else {
@@ -207,7 +218,8 @@ async function main() {
       currentRun = null;
     }
 
-    process.stdout.write('\n\n');
+    md.flush();
+    process.stdout.write('\n');
     await persistHistory();
   }
 
