@@ -1,1 +1,1 @@
-console.log('DoofClaw ready');
+console.log('Matos ready');

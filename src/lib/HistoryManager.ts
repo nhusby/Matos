@@ -2,7 +2,7 @@ import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import type { Agent } from './Agent';
 
-const HISTORY_DIR = '.doofy';
+const HISTORY_DIR = '.matos';
 const HISTORY_FILE = join(HISTORY_DIR, 'history.json');
 
 function serializeMessage(msg: any): any {
