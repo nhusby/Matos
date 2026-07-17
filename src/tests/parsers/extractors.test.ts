@@ -81,6 +81,20 @@ class C:
   expect(extractExports('m.py', code).map((e) => e.name)).toEqual(['C']);
 });
 
+test('extractExports: Perl package and subroutines', () => {
+  const code = `package MyApp;
+use strict;
+use warnings;
+
+sub greet { return "hi"; }
+sub farewell { return "bye"; }
+`;
+  const names = extractExports('MyApp.pm', code)
+    .map((e) => e.name)
+    .sort();
+  expect(names).toEqual(['MyApp', 'farewell', 'greet']);
+});
+
 test('extractExports: TSX exports work via TS query bundle', () => {
   const code = `
 export function Foo() { return <div/>; }
@@ -190,6 +204,26 @@ test('extractSymbols: unsupported extension returns empty', () => {
   expect(extractSymbols('m.unknown', 'code')).toEqual([]);
 });
 
+test('extractSymbols: Perl package and subroutines', () => {
+  const code = `package MyApp;
+
+sub greet {
+    return "hello";
+}
+
+sub farewell {
+    return "bye";
+}
+`;
+  const syms = extractSymbols('MyApp.pm', code);
+  const kinds = syms.map((s) => `${s.kind}:${s.name}`);
+  expect(kinds).toEqual([
+    'class:MyApp',
+    'function:greet',
+    'function:farewell',
+  ]);
+});
+
 // ============================================================
 // scanImports
 // ============================================================
@@ -270,6 +304,16 @@ test('scanImports: Python plain imports', () => {
   expect(imports[0].source).toBe('os');
 });
 
+test('scanImports: Perl use statements', () => {
+  const code = `use strict;
+use warnings;
+use Some::Module;
+`;
+  const imports = scanImports('MyApp.pm', code);
+  const sources = imports.map((i) => i.source).sort();
+  expect(sources).toEqual(['Some::Module', 'strict', 'warnings']);
+});
+
 test('scanImports: unsupported extension returns empty', () => {
   expect(scanImports('m.md', 'whatever')).toEqual([]);
 });
@@ -308,6 +352,33 @@ test('extractExtends: Go returns empty (no extends concept)', () => {
   expect(extractExtends('main.go', code)).toEqual([]);
 });
 
+test('extractExtends: Perl use parent with fully-qualified name', () => {
+  const code = `package Dog;\nuse parent 'Animal::Base';`;
+  const info = extractExtends('Dog.pm', code);
+  expect(info).toHaveLength(1);
+  expect(info[0].className).toBe('Dog');
+  expect(info[0].parentNames).toEqual(['Animal::Base']);
+});
+
+test('extractExtends: Perl use parent with qw list', () => {
+  const code = `package Multi;\nuse parent qw(Role::One Role::Two);`;
+  const info = extractExtends('Multi.pm', code);
+  expect(info).toHaveLength(1);
+  expect(info[0].parentNames).toEqual(['Role::One', 'Role::Two']);
+});
+
+test('extractExtends: Perl use base works like parent', () => {
+  const code = `package Dog;\nuse base 'Animal::Base';`;
+  const info = extractExtends('Dog.pm', code);
+  expect(info[0].className).toBe('Dog');
+  expect(info[0].parentNames).toEqual(['Animal::Base']);
+});
+
+test('extractExtends: Perl single-word parent is skipped (cannot resolve)', () => {
+  const code = `package Dog; use parent 'Animal';`;
+  expect(extractExtends('Dog.pm', code)).toEqual([]);
+});
+
 test('extractExtends: unsupported extension returns empty', () => {
   expect(extractExtends('m.md', 'class X extends Y')).toEqual([]);
 });
@@ -343,6 +414,13 @@ test('findNthIdentifier: returns undefined when occurrence exceeds count', () =>
 
 test('findNthIdentifier: returns undefined for unsupported extension', () => {
   expect(findNthIdentifier('m.md', 'content', 'foo', 1)).toBeUndefined();
+});
+
+test('findNthIdentifier: Perl bareword lookup', () => {
+  const code = `sub greet { return greeting; }`;
+  const pos = findNthIdentifier('MyApp.pm', code, 'greeting', 1);
+  expect(pos).toBeDefined();
+  expect(pos!.row).toBe(0);
 });
 
 test('findNthIdentifier: tracks line number for multiline', () => {

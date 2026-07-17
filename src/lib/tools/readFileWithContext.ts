@@ -18,11 +18,55 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
+async function resolvePerlModule(
+  importerPath: string,
+  moduleName: string,
+): Promise<string | undefined> {
+  const relPath = moduleName.replace(/::/g, '/') + '.pm';
+  const projectRoot = process.cwd();
+
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  const tryAdd = (p: string) => {
+    const r = resolve(p);
+    if (!seen.has(r)) {
+      seen.add(r);
+      candidates.push(r);
+    }
+  };
+
+  // Project-level lib/ and root
+  tryAdd(join(projectRoot, 'lib', relPath));
+  tryAdd(join(projectRoot, relPath));
+
+  // Walk up from importer directory, checking each level + lib/
+  let dir = dirname(resolve(importerPath));
+  for (let i = 0; i < 6; i++) {
+    tryAdd(join(dir, relPath));
+    tryAdd(join(dir, 'lib', relPath));
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  for (const candidate of candidates) {
+    if (await fileExists(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 async function resolveImportPath(
   importerPath: string,
   source: string,
 ): Promise<string | undefined> {
   if (!source) return undefined;
+
+  // Perl module resolution: bareword module names like Some::Module
+  const lang = languageForPath(importerPath);
+  if (lang === 'perl' && !source.startsWith('.') && !source.startsWith('/')) {
+    return resolvePerlModule(importerPath, source);
+  }
+
   if (!source.startsWith('.') && !source.startsWith('/')) return undefined;
   const base = resolve(dirname(importerPath), source);
   for (const ext of ['', ...RESOLVE_EXTS]) {
@@ -75,7 +119,10 @@ async function resolveExtendsChain(
     const importMap = await buildImportMap(resolved, content);
     for (const info of extractExtends(resolved, content)) {
       for (const parentName of info.parentNames) {
-        const parentPath = importMap.get(parentName);
+        let parentPath = importMap.get(parentName);
+        if (!parentPath) {
+          parentPath = await resolveImportPath(resolved, parentName);
+        }
         if (!parentPath || parentPath.includes('node_modules')) continue;
         extendsMap.set(resolved, parentPath);
         queue.push({ path: parentPath, depth: depth + 1 });

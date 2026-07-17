@@ -319,7 +319,7 @@ function scanPerlImports(root: Parser.SyntaxNode): ImportInfo[] {
   const imports: ImportInfo[] = [];
   walkTree(root, (n) => {
     if (n.type !== 'use_statement') return;
-    const mod = findChildByType(n, 'package_name');
+    const mod = findChildByType(n, 'package');
     if (mod) imports.push({ source: mod.text, symbols: [] });
   });
   return imports;
@@ -358,12 +358,59 @@ function collectByType(
   return out;
 }
 
+/**
+ * Perl-specific extends extraction.
+ *
+ * Perl inheritance is expressed via `use parent 'Some::Base';` or
+ * `use base 'Some::Base';` rather than a dedicated syntax node. This function
+ * walks the tree in source order, tracking the current package, and extracts
+ * fully-qualified parent class names from `use parent`/`use base` statements.
+ */
+function extractPerlExtends(
+  filePath: string,
+  content: string,
+): ExtendsInfo[] {
+  const tree = parseSource('perl', content);
+  const results: ExtendsInfo[] = [];
+  let currentPackage: string | undefined;
+
+  walkTree(tree.rootNode, (n) => {
+    if (n.type === 'package_statement') {
+      const nameNode = n.childForFieldName('name');
+      if (nameNode) currentPackage = nameNode.text;
+      return;
+    }
+    if (n.type !== 'use_statement') return;
+
+    const modNode = n.childForFieldName('module');
+    if (!modNode) return;
+    const modName = modNode.text;
+    if (modName !== 'parent' && modName !== 'base') return;
+    if (!currentPackage) return;
+
+    // Extract fully-qualified package names (must contain ::) from the
+    // statement text. Handles both 'Some::Base' and qw(Some::Base Other::Base).
+    const stmtText = n.text;
+    const pkgRe = /[A-Za-z_]\w*(?:::[A-Za-z_]\w*)+/g;
+    const parentNames = [
+      ...new Set([...stmtText.matchAll(pkgRe)].map((m) => m[0])),
+    ].filter((name) => name !== modName);
+
+    if (parentNames.length) {
+      results.push({ className: currentPackage, parentNames });
+    }
+  });
+
+  return results;
+}
+
 export function extractExtends(
   filePath: string,
   content: string,
 ): ExtendsInfo[] {
   const lang = languageForPath(filePath);
   if (!lang) return [];
+  if (lang === 'perl') return extractPerlExtends(filePath, content);
   const query = getQuery(lang, 'extendsClause');
   if (!query) return [];
   const tree = parseSource(lang, content);

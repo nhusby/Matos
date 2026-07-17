@@ -151,3 +151,41 @@ test('readFileWithContext: handles file with no imports or extends', async () =>
   expect(out).not.toContain('<ExtendedClass');
   expect(out).toContain('export const answer = 42;');
 });
+
+test('readFileWithContext: Perl extends chain via use parent', async () => {
+  const { mkdir } = await import('fs/promises');
+  const libDir = join(tmpDir, 'lib', 'Animal');
+  await mkdir(libDir, { recursive: true });
+  await writeFile(
+    join(libDir, 'Base.pm'),
+    'package Animal::Base;\nsub greet { return "hello"; }\n1;\n',
+  );
+
+  const childPath = join(tmpDir, 'Dog.pm');
+  await writeFile(
+    childPath,
+    'package Dog;\nuse parent \'Animal::Base\';\nsub bark { return "woof"; }\n1;\n',
+  );
+
+  const out = (await readFileWithContextTool.callback!({
+    path: childPath,
+  } as any)) as string;
+  expect(out).toContain('<ExtendedClass');
+  expect(out).toContain('package Animal::Base');
+  expect(out).toContain('```perl');
+  expect(out).toContain('package Dog');
+});
+
+test('readFileWithContext: Perl file without extends just shows source', async () => {
+  const filePath = join(tmpDir, 'standalone.pm');
+  await writeFile(
+    filePath,
+    'package Standalone;\nuse strict;\nsub do_thing { return 1; }\n1;\n',
+  );
+  const out = (await readFileWithContextTool.callback!({
+    path: filePath,
+  } as any)) as string;
+  expect(out).not.toContain('<ExtendedClass');
+  expect(out).toContain('package Standalone');
+  expect(out).toContain('```perl');
+});

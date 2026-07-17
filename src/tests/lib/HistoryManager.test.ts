@@ -51,7 +51,7 @@ test('saveHistory: writes a snapshot with messages and readFiles', async () => {
   await saveHistory(agent);
 
   const { existsSync } = await import('fs');
-  expect(existsSync('.doofy/history.json')).toBe(true);
+  expect(existsSync('.matos/history.json')).toBe(true);
 });
 
 test('loadHistory: returns loaded=false when no history file exists', async () => {
@@ -100,8 +100,8 @@ test('loadHistory: preserves Date type for created field', async () => {
 
 test('loadHistory: handles corrupted history file gracefully', async () => {
   const { writeFileSync, mkdirSync } = await import('fs');
-  mkdirSync('.doofy', { recursive: true });
-  writeFileSync('.doofy/history.json', '{ corrupted json');
+  mkdirSync('.matos', { recursive: true });
+  writeFileSync('.matos/history.json', '{ corrupted json');
 
   const agent = makeMockAgent();
   const result = await loadHistory(agent);

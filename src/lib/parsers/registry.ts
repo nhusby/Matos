@@ -2,6 +2,7 @@ import Parser from 'tree-sitter';
 import TS from 'tree-sitter-typescript';
 import Go from 'tree-sitter-go';
 import Py from 'tree-sitter-python';
+import Perl from './perlBinding.js';
 import type { Language } from './languages.js';
 
 type GrammarWrapper = { language: unknown };
@@ -10,12 +11,14 @@ const TS_GRAMMAR = (TS as unknown as { typescript: GrammarWrapper }).typescript;
 const TSX_GRAMMAR = (TS as unknown as { tsx: GrammarWrapper }).tsx;
 const GO_GRAMMAR = Go as unknown as GrammarWrapper;
 const PY_GRAMMAR = Py as unknown as GrammarWrapper;
+const PERL_GRAMMAR = Perl as unknown as GrammarWrapper;
 
 const GRAMMARS: Partial<Record<Language, GrammarWrapper>> = {
   typescript: TS_GRAMMAR,
   tsx: TSX_GRAMMAR,
   go: GO_GRAMMAR,
   python: PY_GRAMMAR,
+  perl: PERL_GRAMMAR,
 };
 
 const parsers = new Map<Language, Parser>();
