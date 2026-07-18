@@ -6,6 +6,9 @@
   "author": "",
   "type": "module",
   "main": "src/index.ts",
+  "bin": {
+    "matos": "./bin/matos.js"
+  },
   "scripts": {
     "build": "tsc",
     "start": "tsx src/index.ts",
