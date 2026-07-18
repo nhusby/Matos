@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { readdir, readFile, stat, writeFile } from 'fs/promises';
 import { resolve, join, relative } from 'path';
+import ignore from 'ignore';
 import { LocalIndex } from 'vectra';
 import type { EmbeddingsModel } from 'vectra';
 import type { Api } from '../Agent';
@@ -23,13 +24,29 @@ const JS_TS_EXTS = new Set([
   '.pm',
   '.t',
 ]);
-const SKIP_DIRS = new Set([
-  'node_modules',
-  '.git',
-  'dist',
-  'build',
-  '.code-rag-index',
-]);
+const ALWAYS_SKIP_DIRS = new Set(['node_modules', 'dist', 'build']);
+
+const MAX_FILE_BYTES = 1_048_576; // 1 MB — skip before reading into memory
+
+interface IgnoreCtx {
+  global: ReturnType<typeof ignore>;
+  local: ReturnType<typeof ignore>[];
+}
+
+async function readIgnoreFile(
+  dir: string,
+  filename: string,
+): Promise<string[]> {
+  try {
+    return (await readFile(join(dir, filename), 'utf-8'))
+      .split('\n')
+      .filter((l) => l.trim() && !l.startsWith('#'));
+  } catch {
+    return [];
+  }
+}
+const MAX_LINES = 5_000; // skip files exceeding this line count
+const MINIFIED_AVG_LINE = 500; // avg chars/line above which source looks minified
 
 export interface CodeIndexConfig {
   projectRoot: string;
@@ -109,6 +126,16 @@ export class CodeIndex {
     }
   }
 
+  /** Delete all indexed items for a file and remove it from the hash cache. */
+  private async purgeFilePath(filePath: string): Promise<number> {
+    const items = await this.index.listItemsByMetadata({
+      filePath: { $eq: filePath },
+    });
+    for (const item of items) await this.index.deleteItem(item.id);
+    delete this.hashCache[filePath];
+    return items.length;
+  }
+
   async indexProject(onProgress?: (msg: string) => void): Promise<IndexStats> {
     const stats: IndexStats = {
       totalFiles: 0,
@@ -121,7 +148,19 @@ export class CodeIndex {
     };
 
     onProgress?.('Scanning files...');
-    const filesOnDisk = await this.walkDir(this.config.projectRoot);
+    const globalPatterns = [
+      ...(await readIgnoreFile(this.config.projectRoot, '.gitignore')),
+      ...(await readIgnoreFile(this.config.projectRoot, '.aiignore')),
+    ];
+    const ignoreCtx: IgnoreCtx = {
+      global: ignore().add(globalPatterns),
+      local: [],
+    };
+    const filesOnDisk = await this.walkDir(
+      this.config.projectRoot,
+      this.config.projectRoot,
+      ignoreCtx,
+    );
     stats.totalFiles = filesOnDisk.length;
 
     const cachedPaths = new Set(Object.keys(this.hashCache));
@@ -133,42 +172,71 @@ export class CodeIndex {
     if (deletedPaths.length > 0) {
       onProgress?.(`Removing ${deletedPaths.length} deleted file(s)...`);
       for (const filePath of deletedPaths) {
-        const items = await this.index.listItemsByMetadata({
-          filePath: { $eq: filePath },
-        });
-        for (const item of items) {
-          await this.index.deleteItem(item.id);
-          stats.removedSymbols++;
-        }
-        delete this.hashCache[filePath];
+        stats.removedSymbols += await this.purgeFilePath(filePath);
       }
     }
 
-    const toProcess: { filePath: string; content: string }[] = [];
+    // Single pass: read, hash, and extract symbols for each changed file in
+    // one iteration so we hold at most one file's source in memory at a time.
+    // (Previously every changed file's full content was accumulated in an
+    // array, and worse, copied onto each of its symbols — and that copy was
+    // never even read downstream. That O(symbols x fileSize) blowup exhausted
+    // the heap on large projects.)
+    onProgress?.(`Processing ${filesOnDisk.length} file(s)...`);
+    const changedFiles: string[] = [];
+    const allSymbols: ExtractedSymbol[] = [];
+    let skippedFiles = 0;
+
     for (const filePath of filesOnDisk) {
+      // Pre-read size guard: avoid loading giant files into memory at all.
+      const fileStat = await stat(filePath);
+      if (fileStat.size > MAX_FILE_BYTES) {
+        const rel = relative(this.config.projectRoot, filePath);
+        onProgress?.(
+          `Skipping large file (${(fileStat.size / 1024).toFixed(0)} KB): ${rel}`,
+        );
+        skippedFiles++;
+        if (this.hashCache[filePath])
+          stats.removedSymbols += await this.purgeFilePath(filePath);
+        continue;
+      }
+
       const content = await readFile(filePath, 'utf-8');
+
+      // Post-read checks: line count and minification heuristic.
+      const lineCount = content.split('\n').length;
+      const avgLineLen = lineCount > 0 ? content.length / lineCount : 0;
+      if (lineCount > MAX_LINES || avgLineLen > MINIFIED_AVG_LINE) {
+        const reason =
+          lineCount > MAX_LINES ? `${lineCount} lines` : 'minified';
+        const rel = relative(this.config.projectRoot, filePath);
+        onProgress?.(`Skipping ${reason} file: ${rel}`);
+        skippedFiles++;
+        if (this.hashCache[filePath])
+          stats.removedSymbols += await this.purgeFilePath(filePath);
+        continue;
+      }
+
       const hash = createHash('sha256').update(content).digest('hex');
       if (this.hashCache[filePath] === hash) continue;
       if (cachedPaths.has(filePath)) stats.changedFiles++;
       else stats.newFiles++;
-      toProcess.push({ filePath, content });
+      changedFiles.push(filePath);
       this.hashCache[filePath] = hash;
+
+      allSymbols.push(...extractSymbols(filePath, content));
+      // `content` falls out of scope here and is GC-eligible before the next
+      // file is read.
     }
 
-    if (toProcess.length === 0 && deletedPaths.length === 0) {
+    if (skippedFiles > 0)
+      onProgress?.(`Skipped ${skippedFiles} large/minified file(s).`);
+    stats.totalSymbols = allSymbols.length;
+
+    if (changedFiles.length === 0 && deletedPaths.length === 0) {
       onProgress?.('Index is up to date.');
       return stats;
     }
-
-    onProgress?.(`Extracting symbols from ${toProcess.length} file(s)...`);
-    const allSymbols: (ExtractedSymbol & { content: string })[] = [];
-    for (const { filePath, content } of toProcess) {
-      const symbols = extractSymbols(filePath, content);
-      for (const sym of symbols) {
-        allSymbols.push({ ...sym, content });
-      }
-    }
-    stats.totalSymbols = allSymbols.length;
 
     onProgress?.(
       `Generating descriptions for ${allSymbols.length} symbol(s)...`,
@@ -179,20 +247,20 @@ export class CodeIndex {
     );
 
     onProgress?.(`Embedding ${descriptions.length} description(s)...`);
-    const embeddingResponse = await this.config.embeddings.createEmbeddings(
-      descriptions.map((d) => d.description),
-    );
-    const vectors = embeddingResponse.output!;
+    // Embed in bounded batches so we never materialize every vector at once.
+    const EMBED_BATCH = 64;
+    const vectors: number[][] = [];
+    for (let i = 0; i < descriptions.length; i += EMBED_BATCH) {
+      const slice = descriptions
+        .slice(i, i + EMBED_BATCH)
+        .map((d) => d.description);
+      const resp = await this.config.embeddings.createEmbeddings(slice);
+      vectors.push(...(resp.output ?? []));
+    }
 
     onProgress?.('Updating index...');
-    for (const filePath of toProcess) {
-      const items = await this.index.listItemsByMetadata({
-        filePath: { $eq: filePath.filePath },
-      });
-      for (const item of items) {
-        await this.index.deleteItem(item.id);
-        stats.removedSymbols++;
-      }
+    for (const filePath of changedFiles) {
+      stats.removedSymbols += await this.purgeFilePath(filePath);
     }
 
     await this.index.beginUpdate();
@@ -285,7 +353,11 @@ export class CodeIndex {
     return results;
   }
 
-  private async walkDir(dir: string): Promise<string[]> {
+  private async walkDir(
+    dir: string,
+    root: string,
+    ctx: IgnoreCtx,
+  ): Promise<string[]> {
     const results: string[] = [];
     let entries;
     try {
@@ -294,11 +366,56 @@ export class CodeIndex {
       return results;
     }
 
+    const relDir = relative(root, dir);
+    const prefix = relDir ? relDir + '/' : '';
+
+    const localPatterns =
+      dir === root
+        ? []
+        : [
+            ...(await readIgnoreFile(dir, '.gitignore')),
+            ...(await readIgnoreFile(dir, '.aiignore')),
+          ];
+    const localIg = localPatterns.length
+      ? ignore().add(localPatterns)
+      : null;
+
+    const childCtx: IgnoreCtx = {
+      global: ctx.global,
+      local: localIg ? [...ctx.local, localIg] : ctx.local,
+    };
+
     for (const entry of entries) {
+      // Skip dot-files/dirs (.git, .code-rag-index, etc.)
+      if (entry.name.startsWith('.')) continue;
+
+      const relPath = prefix + entry.name;
+      // Global ignore patterns (root .gitignore + .aiignore)
+      if (
+        ctx.global.ignores(relPath) ||
+        (entry.isDirectory() && ctx.global.ignores(relPath + '/'))
+      )
+        continue;
+
+      // Parent + local ignore patterns
+      const nameCheck = entry.isDirectory()
+        ? entry.name + '/'
+        : entry.name;
+      let skip = false;
+      for (const ig of ctx.local) {
+        if (ig.ignores(entry.name) || ig.ignores(nameCheck)) {
+          skip = true;
+          break;
+        }
+      }
+      if (!skip && localIg && (localIg.ignores(entry.name) || localIg.ignores(nameCheck)))
+        skip = true;
+      if (skip) continue;
+
       const fullPath = join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
-        results.push(...(await this.walkDir(fullPath)));
+        if (ALWAYS_SKIP_DIRS.has(entry.name)) continue;
+        results.push(...(await this.walkDir(fullPath, root, childCtx)));
       } else if (entry.isFile()) {
         const ext = entry.name.includes('.')
           ? '.' + entry.name.split('.').pop()!
