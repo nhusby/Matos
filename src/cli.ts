@@ -13,6 +13,14 @@ import {
   McpManager,
   createEnableTool,
 } from './lib/mcp/index.js';
+import {
+  loadApprovalConfig,
+  decideApproval,
+  ensureApprovalConfig,
+  isProtectedPath,
+  mentionsProtectedPath,
+  WRITE_TOOLS,
+} from './lib/approval/index.js';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -78,9 +86,7 @@ async function main() {
 
     if (input === '__APPROVAL_TIMEOUT__') {
       editor.cancelQuestion('');
-      throw new Error(
-        '[REJECTED] Tool approval timeout.  No user response.',
-      );
+      throw new Error('[REJECTED] Tool approval timeout.  No user response.');
     }
 
     const trimmed = input.trim();
@@ -104,15 +110,60 @@ async function main() {
       process.stderr.write(`[lsp] startup error: ${e?.message ?? e}\n`),
     );
 
+  // Write default approval rules to ~/.matos/approval.json on first run.
+  ensureApprovalConfig().catch((e) =>
+    process.stderr.write(`[approval] init error: ${e?.message ?? e}\n`),
+  );
+
   agent.on('tool-call', async (toolCall: ToolCall) => {
-    const tool = agent.tools.find((t) => t.name === toolCall.name);
-    if (tool?.requiresApproval) {
-      // Finalize any live markdown frame *before* the interactive approval
-      // prompt is drawn, otherwise a pending re-render could clobber the
-      // prompt (or leave it glued to a half-rendered frame).
-      activeRenderer?.flush();
-      await approveToolCall(toolCall, 'tool-call');
+    // Guard: approval config files must never be silently modified.
+    // File tools (Write/Edit/Delete/Rename) bypass the bash approval gate,
+    // so we intercept them here and force interactive approval.
+    if (WRITE_TOOLS.has(toolCall.name)) {
+      const paths = [
+        toolCall.params?.path,
+        toolCall.params?.oldPath,
+        toolCall.params?.newPath,
+      ].filter((p): p is string => typeof p === 'string');
+      if (paths.some(isProtectedPath)) {
+        activeRenderer?.flush();
+        await approveToolCall(toolCall, 'tool-call');
+        return;
+      }
     }
+
+    const tool = agent.tools.find((t) => t.name === toolCall.name);
+    if (!tool?.requiresApproval) return;
+
+    const command = toolCall.params?.command;
+    if (typeof command === 'string') {
+      let config;
+      try {
+        // Reload each time so edits to .matos/approval.json take effect live.
+        config = await loadApprovalConfig();
+      } catch {
+        config = { approve: [] as string[], reject: [] as string[] };
+      }
+      const { decision, matched, rule } = decideApproval(command, config);
+      if (decision === 'reject') {
+        throw new Error(
+          `[REJECTED] Auto-reject rule "${rule}" matched "${matched}" in: ${command}`,
+        );
+      }
+      // Auto-approve only when the decision is "approve" AND the command
+      // does not touch the approval config (defense-in-depth for bash).
+      if (decision === 'approve' && !mentionsProtectedPath(command)) {
+        return;
+      }
+      // decision === 'prompt', or command touches protected path
+      // -> fall through to interactive approval
+    }
+
+    // Finalize any live markdown frame *before* the interactive approval
+    // prompt is drawn, otherwise a pending re-render could clobber the
+    // prompt (or leave it glued to a half-rendered frame).
+    activeRenderer?.flush();
+    await approveToolCall(toolCall, 'tool-call');
   });
 
   // Initialize MCP (Model Context Protocol) servers
@@ -143,7 +194,9 @@ async function main() {
       }
     })
     .catch((err) => {
-      process.stderr.write(`[mcp] initialization error: ${err?.message ?? err}\n`);
+      process.stderr.write(
+        `[mcp] initialization error: ${err?.message ?? err}\n`,
+      );
     });
 
   let currentRun: Emitter | null = null;
@@ -261,9 +314,7 @@ async function main() {
           new Promise((r) => setTimeout(r, 3000)),
         ]);
       } catch (e: any) {
-        process.stderr.write(
-          `[codeIndex] dispose error: ${e?.message ?? e}\n`,
-        );
+        process.stderr.write(`[codeIndex] dispose error: ${e?.message ?? e}\n`);
       }
     }
 

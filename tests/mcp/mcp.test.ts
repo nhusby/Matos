@@ -261,4 +261,27 @@ describe('McpManager enabled & approvalRequired', () => {
     expect(manager.isAutoEnabled('srv__anything')).toBe(false);
     expect(manager.getAutoEnabledTools()).toEqual([]);
   });
+
+  it('createAgentTool does not set expiresAfterTurns (TTL is handled by ToolPruner)', async () => {
+    const { McpManager } = await import('../../src/lib/mcp/manager');
+
+    const manager = new McpManager();
+    const tool = manager.createAgentTool({
+      fullName: 'srv__x',
+      name: 'x',
+      serverName: 'srv',
+      description: 'does x',
+      raw: {
+        name: 'x',
+        description: 'does x',
+        inputSchema: { type: 'object', properties: {} },
+      } as any,
+    });
+
+    // Context pruning TTL is still set.
+    expect(tool.ttl).toBe(3);
+    // No expiresAfterTurns — expiry is handled externally by ToolPruner
+    // based on the __ naming convention.
+    expect((tool as any).expiresAfterTurns).toBeUndefined();
+  });
 });

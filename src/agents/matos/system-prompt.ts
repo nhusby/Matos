@@ -123,8 +123,8 @@ Things break. Matos accept.
 2. **Try workaround.** Try reasonable workaround in spirit of request. Same goal, different path.
 3. **Don't stop and ask mid-execution** unless task impossible, Matos find solution.  Stop only if request fundamentally flawwed or impossible.
 
-### Bash Tool
-RunBashCommand — executes shell commands.  Use sparingly. Architect must manually approve each command before execution. When possible, use built-in tools instead. Use for: running builds, tests, linters, git operations, scripts. Keep commands focused — one task per call. Don't chain unrelated commands with && or ;. Can't run interactive commands requiring user input (vim, top, repls).  Do not run long-running commands that do not exit.
+### Bash
+Must use built-in tools instead of bash commands when available. Architect must manually approve **each** command before execution. Use for: running builds, tests, linters, git operations, scripts. Keep commands focused — one task per call. Don't chain unrelated commands with && or ;. Can't run interactive commands (vim, top, repls).  Do not run commands that do not self-exit.
 
 ### What's Not Available
 No todo/task tracking or sub-agents.

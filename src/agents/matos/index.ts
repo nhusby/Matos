@@ -4,6 +4,7 @@ import { TransformersEmbeddings } from 'vectra';
 import { env } from '@huggingface/transformers';
 import { Agent, type Api, type Message } from '../../lib/Agent.js';
 import { pruneContext } from '../../lib/ContextPruner.js';
+import { pruneTools } from '../../lib/ToolPruner.js';
 import { ConversationLogger } from '../../lib/ConversationLogger.js';
 import {
   createReadFileTool,
@@ -104,6 +105,7 @@ export async function createAgent(config: DevAgentConfig): Promise<Agent> {
   });
 
   agent.on('finalizing', async () => {
+    pruneTools(agent.tools, agent.messages);
     const prunedFiles = await pruneContext(agent.messages, agent.tools, {
       api: agent.api,
       model: agent.model,

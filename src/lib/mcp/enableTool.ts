@@ -33,7 +33,7 @@ export function createEnableTool(config: EnableToolConfig): Tool {
 
   return {
     name: 'EnableTool',
-    description: `Enable an MCP (Model Context Protocol) tool for use in this session. Use this tool to activate external tools provided by connected MCP servers. Once enabled, the tool will be permanently available alongside the other tools.
+    description: `Enable an MCP (Model Context Protocol) tool for use in this session. Use this tool to activate external tools provided by connected MCP servers. Once enabled, the tool remains available for 3 turns of inactivity (it is automatically disabled if unused for 3 consecutive turns; using it resets the countdown).
 
 Available MCP tools:
 ${toolDescriptions}`,
