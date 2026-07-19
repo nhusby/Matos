@@ -7,6 +7,7 @@ import {
   ensureApprovalConfig,
   DEFAULT_APPROVAL_CONFIG,
   DEFAULT_APPROVAL_RULES,
+  FILE_READING_COMMANDS,
   isProtectedPath,
   mentionsProtectedPath,
   WRITE_TOOLS,
@@ -149,6 +150,33 @@ test('DEFAULT_APPROVAL_RULES: no git commands in either list', () => {
   for (const rule of DEFAULT_APPROVAL_RULES.reject) {
     expect(rule.startsWith('git')).toBe(false);
   }
+});
+
+test('DEFAULT_APPROVAL_RULES: file-reading commands are in approve list', () => {
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('cat *');
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('head *');
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('tail *');
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('wc *');
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('grep *');
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('rg *');
+});
+
+// ------------------------------------------------------- FILE_READING_COMMANDS
+
+test('FILE_READING_COMMANDS: contains expected read commands', () => {
+  expect(FILE_READING_COMMANDS.has('cat')).toBe(true);
+  expect(FILE_READING_COMMANDS.has('head')).toBe(true);
+  expect(FILE_READING_COMMANDS.has('tail')).toBe(true);
+  expect(FILE_READING_COMMANDS.has('wc')).toBe(true);
+  expect(FILE_READING_COMMANDS.has('grep')).toBe(true);
+  expect(FILE_READING_COMMANDS.has('rg')).toBe(true);
+});
+
+test('FILE_READING_COMMANDS: does not include non-reading commands', () => {
+  expect(FILE_READING_COMMANDS.has('echo')).toBe(false);
+  expect(FILE_READING_COMMANDS.has('ls')).toBe(false);
+  expect(FILE_READING_COMMANDS.has('pwd')).toBe(false);
+  expect(FILE_READING_COMMANDS.has('npm')).toBe(false);
 });
 
 // ------------------------------------------------------------- isProtectedPath

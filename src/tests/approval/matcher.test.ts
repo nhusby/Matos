@@ -207,3 +207,104 @@ test('decideApproval: reject still wins over redirect', () => {
   const r = decideApproval('rm -rf / > /dev/null', cfg([], ['rm -rf *']));
   expect(r.decision).toBe('reject');
 });
+
+// ------------------------------------------------------- decideApproval + cwd gating
+
+test('decideApproval: cat within cwd is approved', () => {
+  expect(
+    decideApproval('cat src/index.ts', cfg(['cat *']), process.cwd()).decision,
+  ).toBe('approve');
+});
+
+test('decideApproval: cat in cwd subdirectory is approved', () => {
+  expect(
+    decideApproval('cat src/lib/approval/config.ts', cfg(['cat *']), process.cwd())
+      .decision,
+  ).toBe('approve');
+});
+
+test('decideApproval: cat bare filename within cwd is approved', () => {
+  expect(decideApproval('cat README.md', cfg(['cat *']), process.cwd()).decision).toBe(
+    'approve',
+  );
+});
+
+test('decideApproval: cat with home path (~) prompts', () => {
+  expect(
+    decideApproval('cat ~/.ssh/id_rsa', cfg(['cat *']), process.cwd()).decision,
+  ).toBe('prompt');
+});
+
+test('decideApproval: cat with absolute path outside cwd prompts', () => {
+  expect(
+    decideApproval('cat /etc/passwd', cfg(['cat *']), process.cwd()).decision,
+  ).toBe('prompt');
+});
+
+test('decideApproval: cat with traversal outside cwd prompts', () => {
+  expect(
+    decideApproval('cat ../../etc/passwd', cfg(['cat *']), process.cwd()).decision,
+  ).toBe('prompt');
+});
+
+test('decideApproval: grep pattern file within cwd is approved', () => {
+  expect(
+    decideApproval('grep foo src/index.ts', cfg(['grep *']), process.cwd())
+      .decision,
+  ).toBe('approve');
+});
+
+test('decideApproval: grep with flags and file within cwd is approved', () => {
+  expect(
+    decideApproval('grep -rn foo src/', cfg(['grep *']), process.cwd()).decision,
+  ).toBe('approve');
+});
+
+test('decideApproval: grep pattern file outside cwd prompts', () => {
+  expect(
+    decideApproval('grep foo /etc/passwd', cfg(['grep *']), process.cwd())
+      .decision,
+  ).toBe('prompt');
+});
+
+test('decideApproval: head outside cwd prompts', () => {
+  expect(
+    decideApproval('head ~/.ssh/id_rsa', cfg(['head *']), process.cwd()).decision,
+  ).toBe('prompt');
+});
+
+test('decideApproval: wc outside cwd prompts', () => {
+  expect(
+    decideApproval('wc /etc/passwd', cfg(['wc *']), process.cwd()).decision,
+  ).toBe('prompt');
+});
+
+test('decideApproval: non-file-reading command not affected by cwd gate', () => {
+  expect(
+    decideApproval('echo ~/.ssh/id_rsa', cfg(['echo *']), process.cwd()).decision,
+  ).toBe('approve');
+});
+
+test('decideApproval: cat stdin (-) does not trigger cwd gate', () => {
+  expect(decideApproval('cat -', cfg(['cat *']), process.cwd()).decision).toBe(
+    'approve',
+  );
+});
+
+test('decideApproval: cwd gate only applies when command would be approved', () => {
+  // grep is cwd-gated but NOT in approve list — already prompts, gate is moot.
+  expect(
+    decideApproval('grep foo /etc/passwd', cfg(['npm test']), process.cwd())
+      .decision,
+  ).toBe('prompt');
+});
+
+test('decideApproval: compound command with escaping cat sub-command prompts', () => {
+  // `head src/index.ts` is fine, but `cat /etc/passwd` escapes cwd.
+  const r = decideApproval(
+    'head src/index.ts && cat /etc/passwd',
+    cfg(['head *', 'cat *']),
+    process.cwd(),
+  );
+  expect(r.decision).toBe('prompt');
+});

@@ -1,5 +1,8 @@
 import parse from 'bash-parser';
 import { minimatch } from 'minimatch';
+import { resolve, sep } from 'path';
+import { homedir } from 'os';
+import { FILE_READING_COMMANDS } from './config.js';
 import type { ApprovalConfig } from './config.js';
 
 export type ApprovalDecision = 'approve' | 'reject' | 'prompt';
@@ -201,6 +204,58 @@ function firstMatch(text: string, patterns: string[]): string | undefined {
   return patterns.find((p) => typeof p === 'string' && matchesOne(text, p));
 }
 
+// ---------------------------------------------------------- cwd confinement
+
+/**
+ * True when `filePath` resolves to `cwd` or somewhere beneath it.
+ */
+function isWithinCwd(filePath: string, cwd: string): boolean {
+  const r = resolve(filePath);
+  return r === cwd || r.startsWith(cwd + sep);
+}
+
+/**
+ * Check whether any file-reading sub-command targets a path outside `cwd`.
+ * Expands `~` so home-directory references are caught.  Returns `true`
+ * (conservative escape) when the command cannot be parsed so that the caller
+ * forces interactive approval rather than auto-approving garbage.
+ */
+function escapesCwd(command: string, cwd: string): boolean {
+  let ast: AstNode;
+  try {
+    ast = parse(command);
+  } catch {
+    return true;
+  }
+
+  const cmds: AstNode[] = [];
+  collectCommands(ast, cmds);
+
+  const home = homedir();
+
+  for (const cmd of cmds) {
+    const name = cmd.name?.text ?? '';
+    if (!FILE_READING_COMMANDS.has(name)) continue;
+
+    if (!Array.isArray(cmd.suffix)) continue;
+    for (const arg of cmd.suffix) {
+      if (!arg || typeof arg !== 'object') continue;
+      if (arg.type === 'Redirect') continue;
+
+      const text = arg.text;
+      if (typeof text !== 'string') continue;
+      if (text.startsWith('-')) continue; // flags
+
+      // Expand ~ so home paths resolve outside cwd.
+      const expanded = text.startsWith('~') ? home + text.slice(1) : text;
+
+      if (!isWithinCwd(expanded, cwd)) return true;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Decide whether a bash command should be auto-approved, auto-rejected, or
  * presented to the user for manual approval.
@@ -213,6 +268,7 @@ function firstMatch(text: string, patterns: string[]): string | undefined {
 export function decideApproval(
   command: string,
   config: ApprovalConfig,
+  cwd: string = process.cwd(),
 ): ApprovalResult {
   const commands = splitCommands(command);
 
@@ -236,6 +292,11 @@ export function decideApproval(
     config.approve.length > 0 &&
     commands.every((c) => matchesAny(c, config.approve))
   ) {
+    // File-reading commands (cat, head, grep, etc.) are confined to cwd.
+    // Any argument escaping the project downgrades to interactive approval.
+    if (escapesCwd(command, cwd)) {
+      return { decision: 'prompt', commands };
+    }
     return { decision: 'approve', commands };
   }
 

@@ -53,8 +53,8 @@ export const DEFAULT_APPROVAL_RULES: ApprovalConfig = {
     'make *',
     'ls',
     'ls *',
-    'cat *',
     'echo *',
+    'cat *',
     'head *',
     'tail *',
     'wc *',
@@ -78,6 +78,21 @@ export const DEFAULT_APPROVAL_RULES: ApprovalConfig = {
     'chmod 777 *',
   ],
 };
+
+/**
+ * Commands that read file contents.  When auto-approved, these are gated to
+ * `cwd` — any argument resolving outside the project triggers a prompt.
+ * Prevents exfiltration of sensitive files (`~/.ssh/id_rsa`, `/etc/shadow`,
+ * `.env`, etc.) without abandoning the convenience of auto-approval.
+ */
+export const FILE_READING_COMMANDS = new Set([
+  'cat',
+  'head',
+  'tail',
+  'wc',
+  'grep',
+  'rg',
+]);
 
 export interface ApprovalConfigPaths {
   /** Override the global config path (default: `~/.matos/approval.json`). */
