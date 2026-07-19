@@ -305,6 +305,7 @@ async function main() {
   }
 
   async function handleInput(input: string) {
+    process.stdout.write('\n');
     currentRun = agent.sendMessage({
       role: 'user',
       content: input,
@@ -317,7 +318,7 @@ async function main() {
     // Roughly 4 characters per token × 15 tokens = 60 characters per dot step.
     // This is an approximation — we don't ship a tokenizer — but it gives the
     // user a real-time feel for generation throughput.
-    const CHARS_PER_DOT = 60;
+    const CHARS_PER_DOT = 64;
     let reasoningCharCount = 0;
     let firstReasoningChunk = true;
 
