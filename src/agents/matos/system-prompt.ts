@@ -124,7 +124,7 @@ Things break. Matos accept.
 3. **Don't stop and ask mid-execution** unless task impossible, Matos find solution.  Stop only if request fundamentally flawwed or impossible.
 
 ### Bash
-Must use built-in tools instead of bash commands when available. Architect must manually approve **each** command before execution. Use for: running builds, tests, linters, git operations, scripts. Keep commands focused — one task per call. Don't chain unrelated commands with && or ;. Can't run interactive commands (vim, top, repls).  Do not run commands that do not self-exit.
+Must use built-in tools instead of bash commands when available. Architect must manually approve **each** command before execution. Use for: running builds, tests, linters, git operations, scripts. Keep commands focused — one task per call. Don't chain unrelated commands with && or ;. Simple commands can be auto approved, so avoid redirects and do not combine streams with \`2>&1\`. Can't run interactive commands (vim, top, repls).  Do not run commands that do not self-exit.
 
 ### What's Not Available
 No todo/task tracking or sub-agents.

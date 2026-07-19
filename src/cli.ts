@@ -19,6 +19,7 @@ import {
   ensureApprovalConfig,
   isProtectedPath,
   mentionsProtectedPath,
+  llmDecideApproval,
   WRITE_TOOLS,
 } from './lib/approval/index.js';
 import { readFileSync } from 'fs';
@@ -155,7 +156,26 @@ async function main() {
       if (decision === 'approve' && !mentionsProtectedPath(command)) {
         return;
       }
-      // decision === 'prompt', or command touches protected path
+      // Commands that touch the approval config always require a human — the
+      // agent must never rewrite its own safety rules unattended.
+      if (!mentionsProtectedPath(command)) {
+        // decision === 'prompt' -> delegate to the LLM safety classifier so
+        // the user rarely has to approve harmless commands manually.
+        const llmDecision = await llmDecideApproval(
+          { api: agent.api, model: agent.model },
+          command,
+        );
+        if (llmDecision === 'approve') {
+          return;
+        }
+        if (llmDecision === 'reject') {
+          throw new Error(
+            `[REJECTED] LLM classified command as dangerous: ${command}`,
+          );
+        }
+        // llmDecision === 'prompt' -> fall through to interactive approval
+      }
+      // command touches protected path, or LLM was unsure
       // -> fall through to interactive approval
     }
 

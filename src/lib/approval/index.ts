@@ -16,3 +16,9 @@ export {
   decideApproval,
   hasRedirect,
 } from './matcher.js';
+export {
+  type LlmApprovalConfig,
+  DEFAULT_LLM_APPROVAL_PROMPT,
+  parseLlmDecision,
+  llmDecideApproval,
+} from './llmApproval.js';

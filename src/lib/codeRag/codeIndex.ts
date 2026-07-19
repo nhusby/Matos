@@ -126,13 +126,14 @@ export class CodeIndex {
     }
   }
 
-  /** Delete all indexed items for a file and remove it from the hash cache. */
+  /** Delete all vector-index items for a file. Does NOT touch the hash cache —
+   *  callers manage hash-cache entries explicitly to avoid clobbering freshly
+   *  stored hashes during the changed-file purge loop. */
   private async purgeFilePath(filePath: string): Promise<number> {
     const items = await this.index.listItemsByMetadata({
       filePath: { $eq: filePath },
     });
     for (const item of items) await this.index.deleteItem(item.id);
-    delete this.hashCache[filePath];
     return items.length;
   }
 
@@ -173,6 +174,7 @@ export class CodeIndex {
       onProgress?.(`Removing ${deletedPaths.length} deleted file(s)...`);
       for (const filePath of deletedPaths) {
         stats.removedSymbols += await this.purgeFilePath(filePath);
+        delete this.hashCache[filePath];
       }
     }
 
@@ -196,8 +198,10 @@ export class CodeIndex {
           `Skipping large file (${(fileStat.size / 1024).toFixed(0)} KB): ${rel}`,
         );
         skippedFiles++;
-        if (this.hashCache[filePath])
+        if (this.hashCache[filePath]) {
           stats.removedSymbols += await this.purgeFilePath(filePath);
+          delete this.hashCache[filePath];
+        }
         continue;
       }
 
@@ -212,8 +216,10 @@ export class CodeIndex {
         const rel = relative(this.config.projectRoot, filePath);
         onProgress?.(`Skipping ${reason} file: ${rel}`);
         skippedFiles++;
-        if (this.hashCache[filePath])
+        if (this.hashCache[filePath]) {
           stats.removedSymbols += await this.purgeFilePath(filePath);
+          delete this.hashCache[filePath];
+        }
         continue;
       }
 
