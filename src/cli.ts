@@ -28,10 +28,75 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/**
+ * A small bouncing-dot "thinking" indicator driven by reasoning tokens.
+ *
+ * When reasoning display is off we can't show the raw chain-of-thought, so we
+ * animate a 5-column dot that bounces left↔right instead.  The animation is
+ * **not** timer-based — `advance()` is called from the `reasoning` event
+ * handler roughly every 15 tokens (≈ 60 characters), so the dot speed
+ * reflects actual generation throughput.
+ *
+ * Each frame is exactly 5 characters wide so a `\r` + frame rewrite cleanly
+ * overwrites the previous one, and `stop()` erases the whole 5-column span.
+ *
+ * Frames (forward then reverse, skipping the duplicated endpoints):
+ *   ".    "  " .   "  "  .  "  "   . "  "    ."  "   . "  "  .  "  " .   "
+ */
+function createThinkingAnimation(stream: typeof process.stdout) {
+  const FRAMES = [
+    '.    ',
+    ' .   ',
+    '  .  ',
+    '   . ',
+    '    .',
+    '   . ',
+    '  .  ',
+    ' .   ',
+  ];
+  const WIDTH = FRAMES[0].length;
+  let frame = 0;
+  let visible = false;
+
+  function clearLine() {
+    // Overwrite the visible frame with spaces, then return to column 0.
+    stream.write('\r' + ' '.repeat(WIDTH) + '\r');
+  }
+
+  function start() {
+    stop();
+    frame = 0;
+    visible = true;
+    stream.write('\r' + FRAMES[frame]);
+    frame = (frame + 1) % FRAMES.length;
+  }
+
+  /** Advance the animation one step (called per ~15 reasoning tokens). */
+  function advance() {
+    if (!visible) return;
+    stream.write('\r' + FRAMES[frame]);
+    frame = (frame + 1) % FRAMES.length;
+  }
+
+  function stop() {
+    if (visible) {
+      clearLine();
+      visible = false;
+    }
+  }
+
+  return { start, advance, stop };
+}
+
 async function main() {
   // Clear the terminal and print splash art.
   process.stdout.write('\x1b[2J\x1b[H');
-  const splash = readFileSync(join(__dirname, 'splash.txt'), 'utf-8');
+  let splash: string;
+  try {
+    splash = readFileSync(join(__dirname, 'splash.txt'), 'utf-8');
+  } catch {
+    splash = 'Matos';
+  }
   console.log(splash);
 
   const THINKING_YELLOW = '\x1b[93m';
@@ -103,6 +168,8 @@ async function main() {
     onCodeIndexReady: (ci) => {
       codeIndex = ci;
     },
+    onCodeIndexError: (err) =>
+      process.stderr.write(`[codeIndex] init error: ${err?.message ?? err}\n`),
   });
 
   lspManager
@@ -187,25 +254,27 @@ async function main() {
   });
 
   // Initialize MCP (Model Context Protocol) servers
+  let mcpManager: McpManager | undefined;
   loadMcpConfig()
     .then(async (mcpConfig) => {
-      const mcpManager = new McpManager();
-      await mcpManager.init(mcpConfig);
+      const mgr = new McpManager();
+      mcpManager = mgr;
+      await mgr.init(mcpConfig);
 
-      if (mcpManager.hasTools()) {
+      if (mgr.hasTools()) {
         // Auto-enable tools flagged with `enabled` in config
-        const autoEnabled = mcpManager.getAutoEnabledTools();
+        const autoEnabled = mgr.getAutoEnabledTools();
         for (const tool of autoEnabled) {
-          agent.tools.push(mcpManager.createAgentTool(tool));
+          agent.tools.push(mgr.createAgentTool(tool));
         }
 
         // EnableTool for remaining (non-auto-enabled) tools
-        const enableable = mcpManager
+        const enableable = mgr
           .getDiscoveredTools()
-          .filter((t) => !mcpManager.isAutoEnabled(t.fullName));
+          .filter((t) => !mgr.isAutoEnabled(t.fullName));
         if (enableable.length > 0) {
           const enableTool = createEnableTool({
-            manager: mcpManager,
+            manager: mgr,
             tools: agent.tools,
             exclude: new Set(autoEnabled.map((t) => t.fullName)),
           });
@@ -223,6 +292,9 @@ async function main() {
   let busy = false;
   let activeRenderer: MarkdownStreamRenderer | null = null;
   const pending: string[] = [];
+  // When false (default) reasoning is hidden and replaced by the bouncing-dot
+  // thinking indicator.  Toggled with the /think command.
+  let showReasoning = false;
 
   async function persistHistory() {
     try {
@@ -241,34 +313,81 @@ async function main() {
     let reasoning = false;
     const md = new MarkdownStreamRenderer(process.stdout);
     activeRenderer = md;
+    const thinking = createThinkingAnimation(process.stdout);
+    // Roughly 4 characters per token × 15 tokens = 60 characters per dot step.
+    // This is an approximation — we don't ship a tokenizer — but it gives the
+    // user a real-time feel for generation throughput.
+    const CHARS_PER_DOT = 60;
+    let reasoningCharCount = 0;
+    let firstReasoningChunk = true;
 
     currentRun.on('reasoning-start', () => {
       md.flush();
       reasoning = true;
-      process.stdout.write(THINKING_YELLOW + '\n<thinking>\n');
+      if (showReasoning) {
+        process.stdout.write(THINKING_YELLOW + '\n<thinking>\n');
+      } else {
+        reasoningCharCount = 0;
+        firstReasoningChunk = true;
+        thinking.start();
+      }
     });
     currentRun.on('reasoning', (chunk: string) => {
-      if (!reasoning) {
-        reasoning = true;
-        process.stdout.write('\n' + THINKING_YELLOW);
+      if (showReasoning) {
+        if (!reasoning) {
+          reasoning = true;
+          process.stdout.write('\n' + THINKING_YELLOW);
+        }
+        process.stdout.write(chunk);
+      } else {
+        // Agent only emits reasoning-start on the first thinking phase of a
+        // turn (response.thinking stays true across tool-call rounds).  If
+        // reasoning chunks arrive without a prior reasoning-start, lazily
+        // (re)start the animation so the dots reappear between tool calls.
+        if (!reasoning) {
+          reasoning = true;
+          reasoningCharCount = 0;
+          firstReasoningChunk = true;
+          thinking.start();
+        }
+        if (firstReasoningChunk) {
+          firstReasoningChunk = false;
+          thinking.advance();
+        }
+        reasoningCharCount += chunk.length;
+        while (reasoningCharCount >= CHARS_PER_DOT) {
+          reasoningCharCount -= CHARS_PER_DOT;
+          thinking.advance();
+        }
       }
-      process.stdout.write(chunk);
     });
     currentRun.on('reasoning-finished', () => {
-      process.stdout.write('\n</thinking>' + RESET + '\n\n');
+      if (showReasoning) {
+        process.stdout.write('\n</thinking>' + RESET + '\n\n');
+      } else {
+        thinking.stop();
+      }
       reasoning = false;
     });
     currentRun.on('content', (chunk: string) => {
       if (reasoning) {
         reasoning = false;
-        process.stdout.write(RESET + '\n');
+        if (showReasoning) {
+          process.stdout.write(RESET + '\n');
+        } else {
+          thinking.stop();
+        }
       }
       md.push(chunk);
     });
     currentRun.on('tool-result', (tr: ToolPart) => {
       if (reasoning) {
         reasoning = false;
-        process.stdout.write(RESET + '\n');
+        if (showReasoning) {
+          process.stdout.write(RESET + '\n');
+        } else {
+          thinking.stop();
+        }
       }
       md.flush();
       const pathInfo = tr.params?.path ? ` [${tr.params.path}]` : '';
@@ -281,6 +400,7 @@ async function main() {
     try {
       await currentRun.toPromise();
     } catch (e: any) {
+      thinking.stop();
       md.flush();
       if (e?.name === 'AbortError' || e?.name === 'APIUserAbortError') {
         process.stdout.write('\n[aborted]\n');
@@ -323,6 +443,19 @@ async function main() {
       ]);
     }
 
+    // Close MCP server connections so spawned child processes exit cleanly.
+    const mcp = mcpManager;
+    if (mcp) {
+      try {
+        await Promise.race([
+          mcp.close(),
+          new Promise((r) => setTimeout(r, 3000)),
+        ]);
+      } catch (e: any) {
+        process.stderr.write(`[mcp] shutdown error: ${e?.message ?? e}\n`);
+      }
+    }
+
     // Dispose of the ONNX Runtime inference session so its native threads
     // are torn down cleanly.  Without this, process.exit()
     // races with live threads and crashes with
@@ -352,7 +485,9 @@ async function main() {
   editor.on('close', () => shutdown(0));
   process.on('SIGINT', () => shutdown());
 
-  process.stdout.write('Type /quit to exit. Press ESC to abort.\n');
+  process.stdout.write(
+    'Commands: /quit /think /index /resume /clear. Press ESC to abort.\n',
+  );
 
   editor.on('line', async (line) => {
     const input = line.trim();
@@ -416,6 +551,15 @@ async function main() {
       agent.readFiles.clear();
       await persistHistory();
       process.stdout.write('Cleared messages and read cache. Fresh start!\n\n');
+      editor.prompt();
+      return;
+    }
+
+    if (input === '/think') {
+      showReasoning = !showReasoning;
+      process.stdout.write(
+        `Reasoning display ${showReasoning ? 'ON — showing chain of thought' : 'OFF — showing thinking dots'}.\n`,
+      );
       editor.prompt();
       return;
     }

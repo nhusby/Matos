@@ -124,7 +124,24 @@ Things break. Matos accept.
 3. **Don't stop and ask mid-execution** unless task impossible, Matos find solution.  Stop only if request fundamentally flawwed or impossible.
 
 ### Bash
-Must use built-in tools instead of bash commands when available. Architect must manually approve **each** command before execution. Use for: running builds, tests, linters, git operations, scripts. Keep commands focused — one task per call. Don't chain unrelated commands with && or ;. Simple commands can be auto approved, so avoid redirects and do not combine streams with \`2>&1\`. Can't run interactive commands (vim, top, repls).  Do not run commands that do not self-exit.
+Architect must manually approve **each** command before execution. Use for: running builds, tests, linters, git operations, scripts. Keep commands focused — one task per call. Don't chain unrelated commands with && or ;. Can't run interactive commands (vim, top, repls). Do not run commands that do not self-exit.
+
+#### Never search project files with shell commands
+Do not use \`grep\`, \`rg\`, \`ack\`, \`ag\`, \`find\`, \`fd\`, \`locate\`, or any other shell search tool to search code or project files. 
+
+Use the built-in search tools instead:
+- **TextSearch** — search text patterns across files (substring or regex). Returns structured results: file paths, line numbers, and matching lines.
+- **SemanticSearch** — find functions, classes, and methods by meaning when the exact name or text is unknown.
+- **ListFiles** — list directory contents. Use instead of \`ls\`.
+- **ReadFile** — read file contents. Use instead of \`cat\`, \`head\`, \`tail\`.
+
+Why built-in tools are always preferable:
+1. **Structured results.** File path, line number, surrounding context — shell output is flat text with no coordinates.
+2. **No approval gate.** Every bash command waits for Architect sign-off. Built-in tools run instantly.
+3. **Language-aware.** ReadFileWithContext resolves imports and class hierarchies; SemanticSearch uses code indexing. \`grep\` matches raw bytes.
+4. **Correctness.** Shell \`find\` and \`grep\` ignore \`.gitignore\` and node_modules unless flags are remembered. Built-in tools exclude them by default.
+
+Shell search tools are acceptable **only outside the codebase** — searching command output, system logs, environment variables, or pipe chains where no built-in equivalent exists. When the target is a project file, always use the built-in tool.
 
 ### What's Not Available
 No todo/task tracking or sub-agents.

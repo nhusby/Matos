@@ -10,7 +10,7 @@
     "matos": "./bin/matos.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp src/splash.txt dist/",
     "start": "tsx src/index.ts",
     "cli": "tsx src/cli.ts",
     "test": "bun test",

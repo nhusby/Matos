@@ -157,6 +157,19 @@ test('hasRedirect: detects stderr redirect', () => {
   expect(hasRedirect('cmd 2> errors.txt')).toBe(true);
 });
 
+test('hasRedirect: does NOT flag stderr-to-stdout fd duplication', () => {
+  expect(hasRedirect('cmd 2>&1')).toBe(false);
+});
+
+test('hasRedirect: does NOT flag fd duplication in compound command', () => {
+  expect(hasRedirect('cmd 2>&1 | grep foo')).toBe(false);
+});
+
+test('hasRedirect: still flags fd redirect to a file', () => {
+  // `>&file` redirects stdout+stderr to a real file — that writes to disk.
+  expect(hasRedirect('cmd >& out.txt')).toBe(true);
+});
+
 test('hasRedirect: does NOT flag literal > inside quotes', () => {
   expect(hasRedirect("grep '>' file")).toBe(false);
   expect(hasRedirect("echo '5 > 3'")).toBe(false);
@@ -181,6 +194,12 @@ test('decideApproval: redirect + append also prompts', () => {
   expect(decideApproval('echo hi >> out.txt', cfg(['echo *'])).decision).toBe(
     'prompt',
   );
+});
+
+test('decideApproval: stderr-to-stdout fd duplication does NOT force prompt', () => {
+  // `2>&1` only combines streams — it cannot write to disk, so an approved
+  // command should still be auto-approved.
+  expect(decideApproval('cmd 2>&1', cfg(['cmd *'])).decision).toBe('approve');
 });
 
 test('decideApproval: reject still wins over redirect', () => {

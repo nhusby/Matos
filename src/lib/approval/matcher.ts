@@ -120,13 +120,27 @@ export function splitCommands(command: string): string[] {
 }
 
 /**
- * Recursively search a bash-parser AST for any `Redirect` node.
- * This catches `>`, `>>`, `<`, `<<`, `>&`, `2>`, `&>` and friends — every
- * shell redirect form.
+ * A redirect is a pure file-descriptor duplication (e.g. `2>&1`) when it uses
+ * the `>&` (greatand) operator and targets a numeric fd.  Such redirects only
+ * rewire streams within the process — they never touch the filesystem — so they
+ * are safe to auto-approve and must NOT be treated as disk-writing redirects.
+ */
+function isFdDuplication(node: AstNode): boolean {
+  if (!node || node.type !== 'Redirect') return false;
+  const op = node.op?.text ?? '';
+  const target = node.file?.text ?? '';
+  return op === '>&' && /^\d+$/.test(target);
+}
+
+/**
+ * Recursively search a bash-parser AST for any disk-writing `Redirect` node.
+ * This catches `>`, `>>`, `<`, `<<`, `2>`, `&>` and friends — every shell
+ * redirect form.  Pure fd duplications like `2>&1` are deliberately excluded
+ * since they cannot create or modify files.
  */
 function findRedirectNodes(node: AstNode): boolean {
   if (!node || typeof node !== 'object') return false;
-  if (node.type === 'Redirect') return true;
+  if (node.type === 'Redirect') return !isFdDuplication(node);
 
   for (const value of Object.values(node)) {
     if (Array.isArray(value)) {
@@ -143,10 +157,12 @@ function findRedirectNodes(node: AstNode): boolean {
 }
 
 /**
- * Returns `true` when `command` contains any shell redirect operators
- * (`>`, `>>`, `<`, `<<`, `2>`, `>&`, etc.).  Uses the parsed AST so that a
- * literal `>` inside an argument (e.g. `grep '>' file`) is NOT a
- * false-positive.  Falls back to a conservative regex if parsing fails.
+ * Returns `true` when `command` contains any disk-writing shell redirect
+ * operators (`>`, `>>`, `<`, `<<`, `2>`, etc.).  Pure file-descriptor
+ * duplications such as `2>&1` are ignored — they only combine streams and
+ * cannot create or modify files.  Uses the parsed AST so that a literal `>`
+ * inside an argument (e.g. `grep '>' file`) is NOT a false-positive.  Falls
+ * back to a conservative regex if parsing fails.
  */
 export function hasRedirect(command: string): boolean {
   let ast: AstNode;
@@ -208,8 +224,9 @@ export function decideApproval(
     }
   }
 
-  // Redirects can write, overwrite, or truncate arbitrary files on disk.
-  // Never auto-approve them — force interactive approval every time.
+  // Disk-writing redirects can create, overwrite, or truncate arbitrary files
+  // on disk.  Never auto-approve them — force interactive approval every time.
+  // (Pure fd duplications like `2>&1` are ignored as they cannot touch files.)
   if (hasRedirect(command)) {
     return { decision: 'prompt', commands };
   }

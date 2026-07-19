@@ -3,4 +3,5 @@
 /.code-rag-index/
 /.matos/
 /node_modules/
+/dist/
 .env
