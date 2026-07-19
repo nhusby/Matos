@@ -61,7 +61,25 @@ test('readFileWithContext: includes extends chain parent files', async () => {
   expect(out).toContain('export class Child extends Base');
 });
 
-test('readFileWithContext: respects maxExtendsDepth', async () => {
+test('readFileWithContext: depth=0 includes no parents', async () => {
+  const parentPath = join(tmpDir, 'p.ts');
+  await writeFile(parentPath, 'export class P {}\n');
+
+  const childPath = join(tmpDir, 'c.ts');
+  await writeFile(
+    childPath,
+    `import { P } from './p';\nexport class C extends P {}\n`,
+  );
+
+  // depth=0 → no parents at all
+  const zero = (await readFileWithContextTool.callback!({
+    path: childPath,
+    maxExtendsDepth: 0,
+  } as any)) as string;
+  expect(zero).not.toContain('<ExtendedClass');
+});
+
+test('readFileWithContext: depth=1 includes only the direct parent', async () => {
   const grandparentPath = join(tmpDir, 'gp.ts');
   await writeFile(grandparentPath, 'export class GP {}\n');
 
@@ -76,13 +94,6 @@ test('readFileWithContext: respects maxExtendsDepth', async () => {
     childPath,
     `import { P } from './p';\nexport class C extends P {}\n`,
   );
-
-  // depth=0 → no parents at all
-  const zero = (await readFileWithContextTool.callback!({
-    path: childPath,
-    maxExtendsDepth: 0,
-  } as any)) as string;
-  expect(zero).not.toContain('<ExtendedClass');
 
   // depth=1 → only direct parent (P), not grandparent (GP)
   const one = (await readFileWithContextTool.callback!({
