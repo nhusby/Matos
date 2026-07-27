@@ -143,9 +143,29 @@ test('ensureApprovalConfig: default rules have sane reject coverage', async () =
   );
 });
 
-test('DEFAULT_APPROVAL_RULES: no git commands in either list', () => {
+test('DEFAULT_APPROVAL_RULES: read-only git commands are approved', () => {
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('git diff');
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('git diff *');
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('git log');
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('git log *');
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('git show');
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('git show *');
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('git status');
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('git status *');
+});
+
+test('DEFAULT_APPROVAL_RULES: cd is approved for monorepo workflows', () => {
+  expect(DEFAULT_APPROVAL_RULES.approve).toContain('cd *');
+});
+
+test('DEFAULT_APPROVAL_RULES: state-changing git commands are NOT approved', () => {
   for (const rule of DEFAULT_APPROVAL_RULES.approve) {
-    expect(rule.startsWith('git')).toBe(false);
+    // Only read-only git subcommands should appear; nothing that commits,
+    // pushes, resets, reverts, etc.
+    if (rule.startsWith('git ')) {
+      const sub = rule.split(' ')[1];
+      expect(['diff', 'log', 'show', 'status']).toContain(sub);
+    }
   }
   for (const rule of DEFAULT_APPROVAL_RULES.reject) {
     expect(rule.startsWith('git')).toBe(false);

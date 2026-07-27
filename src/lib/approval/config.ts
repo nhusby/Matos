@@ -33,11 +33,24 @@ export const DEFAULT_APPROVAL_CONFIG: ApprovalConfig = {
 /**
  * Sensible default rules written to the global config on first run.
  *
- * Git commands are deliberately excluded so users can layer their own git
- * rules (per-project or global) without fighting built-in defaults.
+ * `cd *` is included so compound commands like `cd subdir && bun test` in
+ * monorepos are approved instantly — `cd` in a spawned shell only affects
+ * that ephemeral process and is harmless.  Read-only git subcommands (diff,
+ * log, show, status) are likewise included for fast rule-based approval.
+ * State-changing git commands (commit, push, reset, etc.) are intentionally
+ * left out — users can layer their own rules per-project or globally.
  */
 export const DEFAULT_APPROVAL_RULES: ApprovalConfig = {
   approve: [
+    'cd *',
+    'git diff',
+    'git diff *',
+    'git log',
+    'git log *',
+    'git show',
+    'git show *',
+    'git status',
+    'git status *',
     'bun test',
     'bun test *',
     'bun run build',

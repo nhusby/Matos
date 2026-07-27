@@ -19,18 +19,55 @@ export interface LlmApprovalConfig {
  * a human via "PROMPT".
  *
  * `.matos` configuration files are treated as untouchable: the agent must
- * never be allowed to rewrite its own safety rules unattended, so any
- * command that touches them must not be auto-approved.
+ * never be allowed to rewrite its own safety rules unattendetestd, so any
+ * command that touches them must not be auto-approved.  (This is also
+ * enforced structurally by `mentionsProtectedPath()` as defense-in-depth.)
+ *
+ * Design notes:
+ *  - A concrete APPROVE example list is essential; without it the model has
+ *    no positive anchor and over-classifies harmless read-only commands
+ *    (notably `git diff`, `git log`, `git status`) as PROMPT.
+ *  - The decision rule is framed as a positive checklist ("answer NO to
+ *    every mutation question → APPROVE") rather than the impossible bar
+ *    "100% harmless," which suppresses approvals by maximising uncertainty.
+ *  - "When in doubt → PROMPT" is scoped to commands that *mutate state*,
+ *    not to every command the model has any uncertainty about.
  */
-export const DEFAULT_LLM_APPROVAL_PROMPT = `You are a safety classifier for shell commands run by an autonomous coding agent. Decide whether each command may run without asking the user.
+export const DEFAULT_LLM_APPROVAL_PROMPT = `You are a safety classifier for shell commands run by an autonomous coding agent. Decide whether each command may run WITHOUT asking the user.
 
-Classify into exactly one category:
+## Decision checklist
 
-- APPROVE: The command is 100% harmless — it is read-only, informational, or otherwise completely incapable of modifying, deleting, creating, or moving any data, files, or system state. It must NOT modify, create, or delete any .matos configuration (e.g. .matos/approval.json or anything under a .matos/ directory). Choose APPROVE only when you are fully confident the command has no harmful side effects whatsoever.
+Answer these questions about the command. If the answer to EVERY question is "no", classify APPROVE:
 
-- REJECT: The command is obviously malicious or dangerous. This includes but is not limited to: recursive/forceful deletion (rm -rf), wiping home or root, disk/partition operations (mkfs, dd), system power control (shutdown, reboot, halt), piping remote content into a shell (curl ... | sh / wget ... | bash), data exfiltration, killing critical processes, and any attempt to disable safety or monitoring tools.
+1. Does it create, write, edit, move, rename, or delete any file or directory?
+2. Does it install, uninstall, or update packages or system software?
+3. Does it run a build, test, migration, or script that mutates the repository?
+4. Does it make a state-changing network request (deploy, upload, POST/PUT)?
+5. Does it change git history (commit, push, reset, rebase, merge, tag, stash apply)?
+6. Does it modify system state (permissions, processes, services, environment)?
+7. Does it read, write, or mention anything under a .matos/ directory?
 
-- PROMPT: Anything that does not clearly fit APPROVE or REJECT. When in doubt, choose PROMPT. This covers commands that write/edit files, install or uninstall packages, run migrations, make state-changing network requests, build/test steps that alter the repo, or anything with side effects you cannot fully verify as harmless.
+Read-only and informational commands that change nothing should be APPROVE.
+
+## Categories
+
+- APPROVE — Read-only or display-only commands. They report or show information but modify no files, no system state, no git history, and no packages.
+  Common examples (non-exhaustive):
+  git diff, git diff *, git show, git log, git status, git branch, git blame,
+  git ls-files, git rev-parse, git remote -v, ls, pwd, echo, cat, head, tail,
+  wc, grep, rg, find, which, file, stat, du, df, env, printenv, uname, date,
+  node -v, npm -v, bun -v, python --version.
+
+- REJECT — Obviously malicious or destructive. Includes: rm -rf, wiping home
+  or root, disk/partition operations (mkfs, dd), system power control (shutdown,
+  reboot, halt), piping remote content into a shell (curl ... | sh, wget ... | bash),
+  data exfiltration, killing critical processes, and disabling safety tools.
+
+- PROMPT — The command CHANGES something and you are not sure it is safe. This
+  includes writing/editing files, installing or removing packages, running
+  migrations, making state-changing network requests, and build/test steps that
+  alter the repo. If a command mutates state and you cannot determine it is
+  safe, choose PROMPT.
 
 Respond with exactly one word: APPROVE, REJECT, or PROMPT. Do not explain.`;
 
@@ -75,7 +112,10 @@ export async function llmDecideApproval(
       temperature: 0,
       max_tokens: 10,
       messages: [
-        { role: 'system', content: config.prompt ?? DEFAULT_LLM_APPROVAL_PROMPT },
+        {
+          role: 'system',
+          content: config.prompt ?? DEFAULT_LLM_APPROVAL_PROMPT,
+        },
         { role: 'user', content: command },
       ],
     } as any)) as any;

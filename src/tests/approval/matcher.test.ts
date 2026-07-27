@@ -308,3 +308,30 @@ test('decideApproval: compound command with escaping cat sub-command prompts', (
   );
   expect(r.decision).toBe('prompt');
 });
+
+// ----------------------------------------- monorepo cd + command patterns
+
+test('decideApproval: cd subdir && bun test is approved', () => {
+  const r = decideApproval(
+    'cd api && bun test',
+    cfg(['cd *', 'bun test']),
+  );
+  expect(r.decision).toBe('approve');
+});
+
+test('decideApproval: cd subdir && npm test is approved', () => {
+  const r = decideApproval(
+    'cd packages/core && npm test',
+    cfg(['cd *', 'npm test']),
+  );
+  expect(r.decision).toBe('approve');
+});
+
+test('decideApproval: pipe chain with approved stages is approved', () => {
+  const r = decideApproval(
+    'cat src/index.ts | grep import',
+    cfg(['cat *', 'grep *']),
+    process.cwd(),
+  );
+  expect(r.decision).toBe('approve');
+});
