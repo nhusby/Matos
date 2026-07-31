@@ -1,9 +1,39 @@
-import Parser from 'tree-sitter';
+import type Parser from 'tree-sitter';
+import { createRequire } from 'node:module';
 import TS from 'tree-sitter-typescript';
 import Go from 'tree-sitter-go';
 import Py from 'tree-sitter-python';
 import { loadPerlBinding } from './perlBinding.js';
 import type { Language } from './languages.js';
+
+const require = createRequire(import.meta.url);
+
+let _Parser: typeof Parser | null = null;
+
+/**
+ * Lazily load the tree-sitter runtime.
+ *
+ * tree-sitter compiles a native .node binding via node-gyp. If the binary is
+ * missing, built for the wrong ABI, or otherwise corrupt, loading it can
+ * crash the process (SIGSEGV) — an error JavaScript cannot catch. Deferring
+ * the load to first parse ensures a broken binding prevents only code
+ * analysis tools, not app startup. Catchable errors (module not found, etc.)
+ * are wrapped with guidance to `npm rebuild tree-sitter`.
+ */
+export function loadTreeSitter(): typeof Parser {
+  if (_Parser) return _Parser;
+  try {
+    const mod = require('tree-sitter');
+    _Parser = (mod.default ?? mod) as typeof Parser;
+    return _Parser;
+  } catch (e: any) {
+    throw new Error(
+      `Failed to load tree-sitter native binding. ` +
+        `The module may need recompiling: run \`npm rebuild tree-sitter\`. ` +
+        `Original error: ${e?.message ?? e}`,
+    );
+  }
+}
 
 type GrammarWrapper = { language: unknown };
 
@@ -42,7 +72,8 @@ export function getParser(lang: Language): Parser {
   if (!grammar) {
     throw new Error(`No tree-sitter grammar registered for language "${lang}"`);
   }
-  const parser = new Parser();
+  const ParserClass = loadTreeSitter();
+  const parser = new ParserClass();
   parser.setLanguage(grammar as any);
   parsers.set(lang, parser);
   return parser;

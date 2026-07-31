@@ -1,9 +1,9 @@
-import Parser from 'tree-sitter';
+import type Parser from 'tree-sitter';
 import { TYPESCRIPT_QUERIES } from './queries/typescript.js';
 import { GO_QUERIES } from './queries/go.js';
 import { PYTHON_QUERIES } from './queries/python.js';
 import { PERL_QUERIES } from './queries/perl.js';
-import { getParser, parseSource } from './registry.js';
+import { getParser, parseSource, loadTreeSitter } from './registry.js';
 import { languageForPath, type Language } from './languages.js';
 
 type QueryBundle = Readonly<Record<string, string>>;
@@ -25,7 +25,8 @@ function getQuery(lang: Language, key: string): Parser.Query | null {
   const cached = queryCache.get(cacheKey);
   if (cached) return cached;
   try {
-    const q = new Parser.Query(getParser(lang).getLanguage(), source);
+    const Query = loadTreeSitter().Query;
+    const q = new Query(getParser(lang).getLanguage(), source);
     queryCache.set(cacheKey, q);
     return q;
   } catch (e) {
